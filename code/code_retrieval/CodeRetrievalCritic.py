@@ -52,15 +52,6 @@ def _reload_model(model, conf, model_string):
     model.load_state_dict(torch.load(conf['model_directory'] + 'best_model.h5'))
 
 
-def pad_seq(seq, maxlen, pad_token=0):
-    if len(seq) < maxlen:
-        seq = np.append(seq, [pad_token] * maxlen)
-        seq = seq[:maxlen]
-    else:
-        seq = seq[:maxlen]
-    return seq
-
-
 def gVar(data):
     tensor = data
     if isinstance(data, np.ndarray):
@@ -167,10 +158,6 @@ class CrCritic(object):
                                            self.qbs[negative_index].astype('int64'), \
                                            self.codes[negative_index].astype('int64')
 
-            neg_code = pad_seq(neg_code, self.max_code_len)
-            neg_qt = pad_seq(neg_qt, self.max_qt_len)
-            neg_qb = pad_seq(neg_qb, self.max_qb_len)
-
             negative_qts.append(neg_qt)
             negative_qbs.append(neg_qb)
             negative_codes.append(neg_code)
@@ -190,60 +177,41 @@ class CrCritic(object):
         """
 
         # Process Input data
-        processed_code = process_text(code, self.code_vocab)
-        processed_qt = process_text(qt, self.qt_vocab)
-        processed_annotation = process_text(annotation, self.qb_vocab)
-        processed_qb = process_text(qb, self.qb_vocab)
+        processed_code = np.expand_dims(process_text(code, self.code_vocab), axis=0)
+        processed_qt = np.expand_dims(process_text(qt, self.qt_vocab), axis=0)
+        processed_annotation = np.expand_dims(process_text(annotation, self.qb_vocab), axis=0)
+        processed_qb = np.expand_dims(process_text(qb, self.qb_vocab), axis=0)
 
-        processed_code = pad_seq(processed_code, self.max_code_len)
-        processed_qt = pad_seq(processed_qt, self.max_qt_len)
-        processed_annotation = pad_seq(processed_annotation, self.max_qb_len)
-        processed_qb = pad_seq(processed_qb, self.max_qb_len)
-
-        # print(processed_code.shape)
-        # print(processed_qt.shape)
-        # print(processed_annotation.shape)
-        # print(processed_qb.shape)
-        # print('*******')
+        processed_qt, processed_code, processed_annotation = gVar(processed_qt), gVar(processed_code), \
+                                                             gVar(processed_annotation)
+        qt_repr = self.model.qt_encoding(processed_qt)
+        code_repr = self.model.code_encoding(processed_code, processed_annotation)
+        positive_score = F.cosine_similarity(code_repr, qt_repr).data.cpu().numpy()
+        # print("Positive MRR", positive_score)
+        positive_score = positive_score[0]
 
         mrrs = []
         for _ in range(number_of_runs):
+            sims = [positive_score]
             neg_qts, neg_qbs, neg_codes = self._get_negative_pool(poolsize, processed_code, processed_qt,
                                                                processed_annotation, processed_qb)
             # print("Total negative pool size", len(neg_qts))
 
-            # print(processed_code.shape)
-            # for a in neg_codes:
-            #     print(a.shape)
-            #     break
-            #
-            # print(processed_qt.shape)
-            # for a in neg_qts:
-            #     print(a.shape)
-            #     break
-            #
-            # print(processed_annotation.shape)
-            # for a in neg_qbs:
-            #     print(a.shape)
-            #     break
+            for neg_qt, neg_code, neg_qb in zip(neg_qts, neg_codes, neg_qbs):
+                neg_qt = np.expand_dims(neg_qt, axis=0)
+                neg_code = np.expand_dims(neg_code, axis=0)
+                neg_qb = np.expand_dims(neg_qb, axis=0)
 
-            combined_qts = np.stack([processed_qt] + neg_qts, axis=0)
-            combined_codes = np.stack([processed_code] + neg_codes, axis=0)
-            combined_qbs = np.stack([processed_annotation] + neg_qbs, axis=0)
+                # print(neg_qt.shape)
+                # print(neg_code.shape)
+                # print(neg_qb.shape)
 
-            # print(combined_qts.shape)
-            # print(combined_codes.shape)
-            # print(combined_qbs.shape)
+                neg_qt, neg_code, neg_qb = gVar(neg_qt), gVar(neg_code), gVar(neg_qb)
+                code_repr = self.model.code_encoding(neg_code, neg_qb)
+                sims_score = F.cosine_similarity(code_repr, qt_repr).data.cpu().numpy()
+                sims.append(sims_score[0])
 
-            combined_qts, combined_codes, combined_qbs = gVar(combined_qts), gVar(combined_codes), gVar(combined_qbs)
-
-            code_repr = self.model.code_encoding(combined_codes, combined_qbs)
-
-            qt = gVar(combined_qts[0].expand(poolsize, -1))
-            qt_repr = self.model.qt_encoding(qt)
-
-            sims = F.cosine_similarity(code_repr, qt_repr).data.cpu().numpy()
-            neg_sims = np.negative(sims)
+            neg_sims = np.negative(np.array(sims, dtype=np.float32))
             predict = np.argsort(neg_sims)
 
             if top_n_results > 0:
@@ -252,7 +220,6 @@ class CrCritic(object):
 
             predict = [int(k) for k in predict]
             real = [0]
-            # print("Calculating MRR")
             mrrs.append(get_mrr_score(real, predict))
 
         mean_mrr = np.mean(mrrs)
