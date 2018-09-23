@@ -96,7 +96,7 @@ def get_mrr_score(real, predict):
 
 class CrCritic(object):
     def __init__(self):
-        print("Loading Config")
+        # print("Loading Config")
         self.conf = get_config()
 
         print("Loading Negative sample dataset")
