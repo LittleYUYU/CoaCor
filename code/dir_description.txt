@@ -1,0 +1,5 @@
+Dir for source code:
+- code_annotation:
+	source code for Code Annotation/Summarization model.
+- code_retrieval:
+	source code for Code Retrieval model.
