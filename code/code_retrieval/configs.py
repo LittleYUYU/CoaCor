@@ -23,7 +23,7 @@ def get_config():
         'vocab_qb': 'sql.qb.vocab.pkl',
 
         # training_params
-        'batch_size': 24,
+        'batch_size': 64,
         'nb_epoch': 500,
         'optimizer': 'adam',
         'lr': 0.001,
