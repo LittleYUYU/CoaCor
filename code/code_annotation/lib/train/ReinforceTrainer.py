@@ -132,10 +132,12 @@ class ReinforceTrainer(object):
             samples, outputs = self.actor.sample(batch, self.max_length)
 
             # Calculate rewards
+            # s0 = time.time()
             rewards, samples = self.sent_reward_func(
                 batch[0][0].t().tolist(), samples.t().tolist(),
                 [item.tolist() for item in qts], targets.data.t().tolist())
             reward = sum(rewards)
+            # print("Eval one batch time: %.2f" % (time.time() - s0))
 
             # # Perturb rewards (if specified).
             # if self.pert_func is not None:

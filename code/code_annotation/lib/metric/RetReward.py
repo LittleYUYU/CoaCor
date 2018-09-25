@@ -28,11 +28,16 @@ def clean_up_ids(noisy_ids):
 
 
 def sentence_retrieval_mrr(code, annotation, qt, qb, number_of_runs):
+    length = len(annotation)
     code, annotation, qt, qb = clean_up_ids(code), clean_up_ids(annotation), clean_up_ids(qt), clean_up_ids(qb)
     if code is None or annotation is None or qt is None or qb is None:
         mrr = 0.0
+        annotation = [lib.Constants.PAD] * length
     else:
         mrr = cr.get_reward(code, annotation, qt, qb, number_of_runs=number_of_runs, bool_processed=True)
+        annotation = list(annotation)
+        annotation += [lib.Constants.PAD] * (length - len(annotation))
+
     return mrr, annotation
 
 

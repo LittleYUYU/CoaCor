@@ -828,7 +828,7 @@ class Seq2SeqModel(nn.Module):
         for i in range(max_length):
             output, hidden = self.decoder.step(emb, output, hidden, context)
             outputs.append(output)
-            dist = F.softmax(self.generator(output))
+            dist = F.softmax(self.generator(output), dim=-1)
             sample = dist.multinomial(1, replacement=False).view(-1).data
             samples.append(sample)
 

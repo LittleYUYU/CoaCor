@@ -2,7 +2,7 @@ def get_config():
     conf = {
 
         # Change it to necessary directory
-        'workdir': '../dataset/cr_data/',#'./data/',
+        'workdir': 'dataset/cr_data/',#'./data/',
 
         'PAD': 0,
         'BOS': 1,

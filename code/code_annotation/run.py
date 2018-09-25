@@ -33,7 +33,7 @@ def train_a2c(lang, bool_toy, load_from,
               data_type, has_attn, gpus):
     # pretrain: python run.py train_a2c sql 1/0 None None 10 0 text 1 0
     # continue pretraining: python run.py train_a2c sql 1/0 load_from_path None 20 0 text 1 0
-    # RL: python run.py train_a2c sql 1/0 11 30 10 text 1 0
+    # RL: python run.py train_a2c sql 1/0 load_from_path 11 30 10 text 1 0
 
     data_name = "_toy" if int(bool_toy) else ""
 

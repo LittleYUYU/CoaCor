@@ -69,9 +69,9 @@ class Evaluator(object):
                 qts = [item.tolist() for item in qts]
 
                 if self.sent_reward_func is not None:
-                    s0 = time.time()
+                    # s0 = time.time()
                     rewards, _ = self.sent_reward_func(srcs, preds, qts, targets)
-                    print("Eval one batch time: %.2f" % (time.time() - s0))
+                    # print("Eval one batch time: %.2f" % (time.time() - s0))
                 else:
                     rewards = [0.0] * len(preds)
 
