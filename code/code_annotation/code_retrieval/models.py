@@ -48,6 +48,7 @@ class SeqEncoder(nn.Module):
         embedded = F.dropout(embedded, self.config['seqenc_dropout'], self.training)
         rnn_output, hidden = self.lstm(embedded)  # out:[b x seq x hid_sz*2](biRNN)
         rnn_output = F.dropout(rnn_output, self.config['seqenc_dropout'], self.training)
+        rnn_output[rnn_output == 0.0] = -100.0
         output_pool = F.max_pool1d(rnn_output.transpose(1, 2), seq_len).squeeze(2)  # [batch_size x hid_size*2]
         encoding = F.tanh(output_pool)
         return encoding

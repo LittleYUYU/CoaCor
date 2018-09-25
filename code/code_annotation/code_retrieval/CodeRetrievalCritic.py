@@ -31,19 +31,35 @@ def limit_vocab(old_vocab_dict, vocab_length):
 
 def processed_dataset(list_of_strings):
     preprocessed_text = []
-    for string in list_of_strings:
+    strings = all(isinstance(n, str) for n in list_of_strings)
+    for data_point in list_of_strings:
+        if strings:
+            string = data_point
+        else:
+            string = data_point[1]
         words = map(int, string.split())
         preprocessed_text.append(np.array(words))
     return preprocessed_text
 
 
-def create_model_name_string(c):
+def create_model_name_string_old(c):
     string1 = 'qtlen_{}_qblen_{}_codelen_{}_qtnwords_{}_qbnwords_{}_codenwords_{}_batch_{}_optimizer_{}_lr_{}'. \
         format(c['qt_len'], c['code_len'], c['qb_len'], c['qt_n_words'], c['qb_n_words'], c['code_n_words'],
                c['batch_size'], c['optimizer'], str(c['lr'])[2:])
     string2 = '_embsize_{}_lstmdims_{}_bowdropout_{}_seqencdropout_{}_simmeasure_{}'. \
         format(c['emb_size'], c['lstm_dims'], str(c['bow_dropout'])[2:], str(c['seqenc_dropout'])[2:], c['sim_measure'])
     string = string1 + string2
+    return string
+
+
+def create_model_name_string(c):
+    string1 = 'qtlen_{}_qblen_{}_codelen_{}_qtnwords_{}_qbnwords_{}_codenwords_{}_batch_{}_optimizer_{}_lr_{}'. \
+        format(c['qt_len'], c['qb_len'], c['code_len'], c['qt_n_words'], c['qb_n_words'], c['code_n_words'],
+               c['batch_size'], c['optimizer'], str(c['lr'])[2:])
+    string2 = '_embsize_{}_lstmdims_{}_bowdropout_{}_seqencdropout_{}_simmeasure_{}'. \
+        format(c['emb_size'], c['lstm_dims'], str(c['bow_dropout'])[2:], str(c['seqenc_dropout'])[2:], c['sim_measure'])
+    string3 = '_maxpool'
+    string = string1 + string2 + string3
     return string
 
 
