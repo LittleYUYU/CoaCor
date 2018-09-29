@@ -29,6 +29,11 @@ class Trainer(object):
         for epoch in range(start_epoch, end_epoch + 1):
             print("* XENT epoch *")
             print("Model optim lr: %g" % self.optim.lr)
+
+            if self.optim.lr < lib.Constants.MIN_LR:
+                print("Early stop when learning rate is lower than %s" % (str(lib.Constants.MIN_LR)))
+                break
+
             train_loss = self.train_epoch(epoch)
             print('Train perplexity: %.2f' % math.exp(min(train_loss, 100)))
 
@@ -48,8 +53,12 @@ class Trainer(object):
                 'optim': self.optim,
             }
             # model_name = os.path.join(self.opt.save_dir, "model_%d.pt" % epoch)
-            model_name = os.path.join(self.opt.save_dir, "%smodel_xent_%s_%s_%s.pt" % (
-                self.opt.data_name, self.opt.data_type, self.opt.has_attn, epoch))
+            save_name = "%smodel_xent%s" % (self.opt.data_name, self.opt.show_str)
+            save_dir = os.path.join(self.opt.save_dir, save_name)
+            if not os.path.exists(save_dir):
+                os.makedirs(save_dir)
+
+            model_name = os.path.join(save_dir, "%s_%s.pt" % (save_name, epoch))
 
             torch.save(checkpoint, model_name)
             print("Save model as %s" % model_name)

@@ -3,6 +3,8 @@
 
 import pickle
 import random
+import torch
+# import lib
 
 
 def get_indices(lang, data_name, load_dir):
@@ -86,7 +88,7 @@ def get_split_indices(lang, load_dir):
     data_name_list = ["train", "valid", "test"]
     indices_list = [get_indices(lang, data_name, load_dir) for data_name in data_name_list]
 
-    indices_list = clean_split_indices(indices_list)
+    # indices_list = clean_split_indices(indices_list)
     data_name2indices = {}
 
     print("After cleaning:")
@@ -97,12 +99,95 @@ def get_split_indices(lang, load_dir):
     return data_name2indices
 
 
+def get_pos_negs_pairs(split_indices, data_name):
+    print("Working on %s set..." % data_name)
+    indices = split_indices[data_name]
+    pool_size = 50
+
+    pos_negs_pairs = []
+
+    for pos_idx in range(len(indices) // pool_size):
+        pos = indices[pos_idx * pool_size]
+        negs = indices[pos_idx * pool_size + 1: (pos_idx + 1) * pool_size]
+        assert len(negs) == pool_size - 1
+        pos_negs_pairs.append((pos, negs))
+
+    print("#of positive examples: %d" % len(pos_negs_pairs))
+    return pos_negs_pairs
+
+
+def prepare_eval_set(data_name, pos_negs_pairs, available_indices):
+    pos_indices = [pos for pos, negs in pos_negs_pairs if pos in available_indices]
+    found = len(pos_indices)
+
+    remain_indices = set(available_indices) - set(pos_indices)
+    new_indices = random.sample(remain_indices, len(pos_negs_pairs) - found)
+    pos_indices += list(new_indices)
+
+    print("%s set: #of positive examples %d, re-sampled %d" % (data_name, len(pos_indices), len(new_indices)))
+    return pos_indices
+
+
+#############################
+## for processing CODENN data
+#############################
+def prepare_codenn_eval(data_name, qid2cid, qid2qt, cid2code, EOS):
+    print("Processing %s set" % data_name)
+    src, tgt = [], []
+    ignored = 0
+
+    for qid, cid in qid2cid:
+        qt_str = qid2qt[qid]
+        code_str = cid2code[cid]
+
+        qt = [int(i) for i in qt_str.strip().split(" ")] + [EOS]
+        code = [int(i) for i in code_str.strip().split(" ")]
+
+        if len(qt) == 0 or len(code) == 0:
+            ignored += 1
+            continue
+
+        src.append(torch.LongTensor(code))
+        tgt.append(torch.LongTensor(qt))
+
+    print("Size %d. #ignored %d." % (len(src), ignored))
+    return src, tgt
+
+
 def main():
     lang = "sql"
     load_dir = "../../data/version2/source/"
-    save_dir = "../../data/version2/"
-    split_indices = get_split_indices(lang, load_dir)
-    pickle.dump(split_indices, open(save_dir + "split_indices_%s.pkl" % lang, "wb"))
+    save_dir = "../../data/version2/origin/"
+    # split_indices = get_split_indices(lang, load_dir)
+    split_indices = pickle.load(open(load_dir + "split_indices_%s.pkl" % lang))
+
+    final_split_indices = {"train": split_indices["train"]}
+    for data_name in ["valid", "test"]:
+        pos_negs_pairs = pickle.load(open(load_dir + "pos_negs_pairs_%s_%s.pkl" % (data_name, lang)))
+        pos_indices = prepare_eval_set(data_name, pos_negs_pairs, split_indices[data_name])
+        final_split_indices[data_name] = pos_indices
+
+    pickle.dump(final_split_indices, open(save_dir + "split_indices_simplified_%s.pkl" % lang, "wb"))
+
+    # # preparing codenn data for evaluating CA model
+    # load_dir = "../../data/codenn/"
+    # data = {"valid": {}, "test": {}}
+    #
+    # for data_name in ["valid", "test"]:
+    #     file_name = "dev" if data_name == "valid" else "eval"
+    #     cid2code = pickle.load(open(load_dir + "codenn.%s.ix_to_code.processed.pkl" % file_name))
+    #     qid2qt = pickle.load(open(load_dir + "codenn.%s.ix_to_qt.processed.pkl" % file_name))
+    #     qid2cid = pickle.load(open(load_dir + "codenn.%s.qid_to_cid.dataset.pkl" % file_name))
+    #     src, tgt = prepare_codenn_eval(data_name, qid2cid, qid2qt, cid2code)
+    #     data[data_name]["src"] = src
+    #     data[data_name]["tgt"] = tgt
+    #     data[data_name]["qt"] = [None] * len(src)
+    #     data[data_name]["tree"] = []
+    #
+    # dicts = torch.load("dataset/train_qt/sql.processed_all.train.pt")["dicts"]
+    # data["dicts"] = dicts
+    # data["train"] = {"src": [], "tgt": [], "qt": [], "tree": []}
+    # torch.save(data, "dataset/sql.processed_all.codenn_test.pt")
 
 
 if __name__ == '__main__':

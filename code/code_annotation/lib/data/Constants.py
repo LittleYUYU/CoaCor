@@ -19,3 +19,5 @@ EOS_WORD = '<eos>'
 UNK_WORD = '<unk>'
 
 NODE_FIX = '1*NODEFIX'#'1*NODEFIX'
+
+MIN_LR = 1e-6

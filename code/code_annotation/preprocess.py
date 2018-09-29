@@ -80,7 +80,7 @@ def saveVocabulary(name, vocab, file):
     vocab.writeFile(file)
 
 
-def makeData(token_src, token_tgt, token_qt, srcDicts, tgtDicts, qtDicts):
+def makeData(token_src, token_tgt, token_qt, srcDicts, tgtDicts, qtDicts, bool_ignore=True):
     src_ids, tgt_ids, qt_ids, trees = [], [], [], []
     ignored, exceps, empty = 0, 0, 0
 
@@ -95,7 +95,12 @@ def makeData(token_src, token_tgt, token_qt, srcDicts, tgtDicts, qtDicts):
             qt_ids += [qtDicts.convertToIdx(sent_qt, Constants.UNK_WORD)]
             trees += []
         else:
-            ignored += 1
+            if bool_ignore:
+                ignored += 1
+            else:
+                src_ids += [srcDicts.convertToIdx(sent_src[:opt.src_seq_length], Constants.UNK_WORD)]
+                tgt_ids += [tgtDicts.convertToIdx(sent_tgt[:opt.tgt_seq_length], Constants.UNK_WORD, eosWord=Constants.EOS_WORD)]
+                qt_ids += [qtDicts.convertToIdx(sent_qt, Constants.UNK_WORD)]
 
     print(('Prepared %d sentences ' +
            '(%d ignored due to src len > %d or tgt len > %d)' +
@@ -105,11 +110,12 @@ def makeData(token_src, token_tgt, token_qt, srcDicts, tgtDicts, qtDicts):
     return src_ids, tgt_ids, qt_ids, trees
 
 
-def makeDataGeneral(name, token_src, token_tgt, token_qt, dicts):
+def makeDataGeneral(name, token_src, token_tgt, token_qt, dicts, bool_ignore=True):
     print('Preparing ' + name + '...')
     res = {}
     res['src'], res['tgt'], res['qt'], res['trees'] = makeData(token_src, token_tgt, token_qt,
-                                                               dicts['src'], dicts['tgt'], dicts['qt'])
+                                                               dicts['src'], dicts['tgt'], dicts['qt'],
+                                                               bool_ignore=bool_ignore)
     return res
 
 
@@ -193,14 +199,12 @@ def main():
 
     save_data = {}
     save_data['dicts'] = dicts
-    save_data['train_xe'] = makeDataGeneral('train_xe', train_src, train_tgt, train_qt, dicts)
-    # save_data['train_pg'] = makeDataGeneral('train_pg', train_src, train_tgt, dicts)
-    save_data['train_pg'] = copy.deepcopy(save_data['train_xe'])
-    save_data['valid_xe'] = makeDataGeneral('valid_xe', valid_src, valid_tgt, valid_qt, dicts)
-    valid_pg = random.sample(zip(valid_src, valid_tgt, valid_qt), 2000)
-    valid_src_pg, valid_tgt_pg, valid_qt_pg = zip(*valid_pg)
-    save_data['valid_pg'] = makeDataGeneral('valid_pg', list(valid_src_pg), list(valid_tgt_pg), list(valid_qt_pg), dicts)
-    save_data['test'] = makeDataGeneral('test', test_src, test_tgt, test_qt, dicts)
+    save_data['train'] = makeDataGeneral('train', train_src, train_tgt, train_qt, dicts, bool_ignore=False)
+    save_data['valid'] = makeDataGeneral('valid', valid_src, valid_tgt, valid_qt, dicts, bool_ignore=False)
+    # valid_pg = random.sample(zip(valid_src, valid_tgt, valid_qt), 2000)
+    # valid_src_pg, valid_tgt_pg, valid_qt_pg = zip(*valid_pg)
+    # save_data['valid_pg'] = makeDataGeneral('valid_pg', list(valid_src_pg), list(valid_tgt_pg), list(valid_qt_pg), dicts)
+    save_data['test'] = makeDataGeneral('test', test_src, test_tgt, test_qt, dicts, bool_ignore=False)
 
     print("Saving data to \"" + opt.save_data + ".train.pt\"...")
     torch.save(save_data, opt.save_data + ".train.pt")
@@ -208,7 +212,7 @@ def main():
     # toy data for quick test
     toy_data = {}
     toy_data['dicts'] = save_data['dicts']
-    for item in ["train_xe", "train_pg", "valid_xe", "valid_pg", "test"]:
+    for item in ["train", "valid", "test"]:
         toy_data[item] = {}
         for k,v in save_data[item].items():
             toy_data[item][k] = v[:1000]

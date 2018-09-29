@@ -60,7 +60,8 @@ class Encoder(nn.Module):
 
         super(Encoder, self).__init__()
         self.word_lut = nn.Embedding(dicts.size(), opt.word_vec_size, padding_idx=lib.Constants.PAD)
-        self.rnn = nn.LSTM(opt.word_vec_size, self.hidden_size,  num_layers=opt.layers, bidirectional=opt.brnn)
+        self.rnn = nn.LSTM(opt.word_vec_size, self.hidden_size, dropout=opt.dropout,
+                           num_layers=opt.layers, bidirectional=opt.brnn)
         self.dicts = dicts
         self.opt = opt
 

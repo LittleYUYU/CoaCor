@@ -16,17 +16,17 @@ import random
 from lib.data.Tree import *
 import time
 
-# to deal with version incompatible
-import torch._utils
-try:
-    torch._utils._rebuild_tensor_v2
-except AttributeError:
-    def _rebuild_tensor_v2(storage, storage_offset, size, stride, requires_grad, backward_hooks):
-        tensor = torch._utils._rebuild_tensor(storage, storage_offset, size, stride)
-        tensor.requires_grad = requires_grad
-        tensor._backward_hooks = backward_hooks
-        return tensor
-    torch._utils._rebuild_tensor_v2 = _rebuild_tensor_v2
+# # to deal with version incompatible
+# import torch._utils
+# try:
+#     torch._utils._rebuild_tensor_v2
+# except AttributeError:
+#     def _rebuild_tensor_v2(storage, storage_offset, size, stride, requires_grad, backward_hooks):
+#         tensor = torch._utils._rebuild_tensor(storage, storage_offset, size, stride)
+#         tensor.requires_grad = requires_grad
+#         tensor._backward_hooks = backward_hooks
+#         return tensor
+#     torch._utils._rebuild_tensor_v2 = _rebuild_tensor_v2
 
 
 def get_opt():
@@ -37,6 +37,7 @@ def get_opt():
     parser.add_argument('-data_name', default="", help="Data name, such as toy")
     parser.add_argument('-save_dir', required=True, help='Directory to save models')
     parser.add_argument("-load_from", help="Path to load a pretrained model.")
+    parser.add_argument("-show_str", required=True, help="string of arguments for saving models.")
     parser.add_argument('-embedding_w2v', required=False, help='Path to the *-embedding_w2v file from preprocess.py')
     parser.add_argument('-train_portion', type=float, default=0.6)
     parser.add_argument('-dev_portion', type=float, default=0.2)
@@ -49,6 +50,7 @@ def get_opt():
     parser.add_argument('-brnn', action='store_true', help='Use a bidirectional encoder')
     parser.add_argument('-brnn_merge', default='concat', help="""Merge action for the bidirectional hidden states: [concat|sum]""")
     parser.add_argument('-has_attn', type=int, default=1, help="""attn model or not""")
+    parser.add_argument('-has_baseline', type=int, default=1, help="baseline model")
 
     # Optimization options
     parser.add_argument('-data_type', default='text', help="Type of encoder to use. Options are [text|code|hybrid].")
@@ -68,9 +70,10 @@ def get_opt():
     parser.add_argument('-learning_rate_decay', type=float, default=0.5,
                         help="""If update_learning_rate, decay learning rate by
                         this much if (i) perplexity does not decrease on the
-                        validation set or (ii) epoch has gone past start_decay_at""")
+                        validation set and (ii) epoch has gone past start_decay_at""")
     parser.add_argument('-start_decay_at', type=int, default=5,
                         help="""Start decaying every epoch after and including this epoch""")
+
     # GPU
     parser.add_argument('-gpus', default=[0], nargs='+', type=int, help="Use CUDA on the listed devices.")
     parser.add_argument('-log_interval', type=int, default=50, help="Print stats at this interval.")
@@ -86,6 +89,9 @@ def get_opt():
     parser.add_argument("-eval_one", action="store_true", help="Evaluate only one sample.")
     parser.add_argument("-eval_sample", action="store_true", default=False, help="Eval by sampling")
     parser.add_argument("-max_predict_length", type=int, default=100, help="Maximum length of predictions.")
+    parser.add_argument("-sent_reward", default="cr", help="{cr|bleu}")
+    parser.add_argument("-eval_codenn", action="store_true", help="Set to True to evaluate on codenn DEV/EVAL. Used for evaluation only.")
+    parser.add_argument("-empty_anno", action="store_true", help="Set to True to feed empty annotations.")
 
     # # Reward shaping
     # parser.add_argument("-pert_func", type=str, default=None, help="Reward-shaping function.")
@@ -140,36 +146,34 @@ def load_data(opt):
         _, dataset["test"]['src'], dataset["test"]['tgt'], dataset["test"]['trees'] = sort_test(dataset)
 
     if opt.data_type in {"code", "hybrid"}:
-        dataset["train_xe"]['trees'] = get_data_trees(dataset["train_xe"]['trees'])
-        dataset["train_pg"]['trees'] = get_data_trees(dataset["train_pg"]['trees'])
-        dataset["valid_xe"]['trees'] = get_data_trees(dataset["valid_xe"]['trees'])
-        dataset["valid_pg"]['trees'] = get_data_trees(dataset["valid_pg"]['trees'])
+        dataset["train"]['trees'] = get_data_trees(dataset["train"]['trees'])
+        dataset["valid"]['trees'] = get_data_trees(dataset["valid"]['trees'])
+        # dataset["valid_pg"]['trees'] = get_data_trees(dataset["valid_pg"]['trees'])
         dataset["test"]['trees'] = get_data_trees(dataset["test"]['trees'])
 
-        dataset["train_xe"]['leafs'] = get_data_leafs(dataset["train_xe"]['trees'], dicts['src'])
-        dataset["train_pg"]['leafs'] = get_data_leafs(dataset["train_pg"]['trees'], dicts['src'])
-        dataset["valid_xe"]['leafs'] = get_data_leafs(dataset["valid_xe"]['trees'], dicts['src'])
-        dataset["valid_pg"]['leafs'] = get_data_leafs(dataset["valid_pg"]['trees'], dicts['src'])
+        dataset["train"]['leafs'] = get_data_leafs(dataset["train"]['trees'], dicts['src'])
+        dataset["valid"]['leafs'] = get_data_leafs(dataset["valid"]['trees'], dicts['src'])
+        # dataset["valid_pg"]['leafs'] = get_data_leafs(dataset["valid_pg"]['trees'], dicts['src'])
         dataset["test"]['leafs'] = get_data_leafs(dataset["test"]['trees'], dicts['src'])
     else:
-        size = len(dataset["train_xe"]["src"])
-        for item in ["train_xe", "train_pg", "valid_xe", "valid_pg", "test"]:
+        size = len(dataset["train"]["src"])
+        for item in ["train", "valid", "test"]:
             dataset[item]['trees'] = [None] * size
             dataset[item]['leafs'] = [None] * size
 
-    supervised_data = lib.Dataset(dataset["train_xe"], opt.batch_size, opt.cuda, opt.data_type, eval=False)
-    rl_data = lib.Dataset(dataset["train_pg"], opt.batch_size, opt.cuda, opt.data_type, eval=False)
-    valid_xe_data = lib.Dataset(dataset["valid_xe"], opt.batch_size, opt.cuda, opt.data_type, eval=True)
-    valid_pg_data = lib.Dataset(dataset["valid_pg"], opt.batch_size, opt.cuda, opt.data_type, eval=True)
+    supervised_data = lib.Dataset(dataset["train"], opt.batch_size, opt.cuda, opt.data_type, eval=False)
+    rl_data = lib.Dataset(dataset["train"], opt.batch_size, opt.cuda, opt.data_type, eval=False)
+    valid_data = lib.Dataset(dataset["valid"], opt.batch_size, opt.cuda, opt.data_type, eval=True)
+    # valid_pg_data = lib.Dataset(dataset["valid_pg"], opt.batch_size, opt.cuda, opt.data_type, eval=True)
     test_data = lib.Dataset(dataset["test"], opt.batch_size, opt.cuda, opt.data_type, eval=True)
     vis_data = lib.Dataset(dataset["test"], 1, opt.cuda, opt.data_type, eval=True) # batch_size set to 1 for case study
 
     print(" * vocabulary size. source = %d; target = %d" % (dicts["src"].size(), dicts["tgt"].size()))
-    print(" * number of XENT training sentences. %d" % len(dataset["train_xe"]["src"]))
-    print(" * number of PG training sentences. %d" % len(dataset["train_pg"]["src"]))
+    print(" * number of XENT training sentences. %d" % len(dataset["train"]["src"]))
+    print(" * number of PG training sentences. %d" % len(dataset["train"]["src"]))
     print(" * maximum batch size. %d" % opt.batch_size)
 
-    return dicts, supervised_data, rl_data, valid_xe_data, valid_pg_data, test_data, vis_data
+    return dicts, supervised_data, rl_data, valid_data, test_data, vis_data
 
 def init(model):
     for p in model.parameters():
@@ -198,6 +202,7 @@ def create_model(model_class, dicts, gen_out_size):
 
     # Use memory efficient generator when output size is large and
     # max_generator_batches is smaller than batch_size.
+    opt.max_generator_batches = opt.batch_size
     if opt.max_generator_batches < opt.batch_size and gen_out_size > 1:
         generator = lib.MemEfficientGenerator(nn.Linear(opt.rnn_size, gen_out_size), opt)
     else:
@@ -252,12 +257,15 @@ def main():
         cuda.set_device(opt.gpus[0])
         torch.cuda.manual_seed(opt.seed)
 
-    dicts, supervised_data, rl_data, valid_xe_data, valid_pg_data, test_data, vis_data = load_data(opt)
+    dicts, supervised_data, rl_data, valid_data, test_data, vis_data = load_data(opt)
 
     print("Building model...")
 
     use_critic = opt.start_reinforce is not None
     print("use_critic: ", use_critic)
+    print("has_baseline: ", opt.has_baseline)
+    if not opt.has_baseline:
+        assert opt.critic_pretrain_epochs == 0
 
     if opt.load_from is None:
         if opt.data_type == 'code':
@@ -297,51 +305,82 @@ def main():
     print("* number of parameters: %d" % nParams)
 
     # Metrics.
+    print("sent_reward: %s" % opt.sent_reward)
     metrics = {}
     metrics["xent_loss"] = lib.Loss.weighted_xent_loss
     metrics["critic_loss"] = lib.Loss.weighted_mse
     # metrics["sent_reward"] = lib.Reward.sentence_bleu
     # metrics["corp_reward"] = lib.Reward.corpus_bleu
-    metrics["sent_reward"] = lib.RetReward.retrieval_mrr_precise
+    if opt.sent_reward == "bleu":
+        metrics["sent_reward"] = lib.Reward.warpped_sentence_bleu
+    else:
+        metrics["sent_reward"] = lib.RetReward.retrieval_mrr_valid
 
-    metrics_xe = {}
-    metrics_xe["xent_loss"] = lib.Loss.weighted_xent_loss
-    metrics_xe["critic_loss"] = lib.Loss.weighted_mse
-    # metrics_xe["sent_reward"] = lib.RetReward.retrieval_mrr
+    # metrics_xe = {}
+    # metrics_xe["xent_loss"] = lib.Loss.weighted_xent_loss
+    # metrics_xe["critic_loss"] = lib.Loss.weighted_mse
+    # metrics_xe["sent_reward"] = lib.Reward.sentence_bleu
 
     # if opt.pert_func is not None:
     #     opt.pert_func = lib.PertFunction(opt.pert_func, opt.pert_param)
 
     print("opt.eval: ", opt.eval)
     print("opt.eval_sample: ", opt.eval_sample)
+    print("opt.eval_codenn: ", opt.eval_codenn)
+    print("opt.empty_anno: ", opt.empty_anno)
 
     # Evaluate model on heldout dataset.
     if opt.eval:
-        metrics["sent_reward"] = lib.RetReward.retrieval_mrr
+        if opt.sent_reward == "bleu":
+            metrics["sent_reward"] = lib.Reward.warpped_sentence_bleu
+        else:
+            metrics["sent_reward"] = lib.RetReward.retrieval_mrr_valid
         evaluator = lib.Evaluator(model, metrics, dicts, opt)
-        # # On validation set.
-        # if opt.var_length:
-        #     pred_file = opt.load_from.replace(".pt", ".valid.pred.var"+opt.var_type)
-        # else:
-        #     pred_file = opt.load_from.replace(".pt", ".valid.pred")
-        # print("valid_xe_data.src: ", len(valid_xe_data.src))
-        # evaluator.eval(valid_xe_data, pred_file)
+        # On validation set.
+        if opt.var_length:
+            pred_file = opt.load_from.replace(".pt", ".valid.pred.var"+opt.var_type)
+        else:
+            pred_file = opt.load_from.replace(".pt", ".valid.pred")
+        if opt.eval_codenn:
+            pred_file = pred_file.replace("valid", "DEV")
+        print("valid_data.src: ", len(valid_data.src))
+        if opt.empty_anno:
+            pred_file += ".emptyAnno"
+        evaluator.eval(valid_data, pred_file)
 
         # On test set.
+        if opt.sent_reward == "bleu":
+            metrics["sent_reward"] = lib.Reward.warpped_sentence_bleu
+        else:
+            metrics["sent_reward"] = lib.RetReward.retrieval_mrr_test
+        evaluator = lib.Evaluator(model, metrics, dicts, opt)
         if opt.var_length:
             pred_file = opt.load_from.replace(".pt", ".test.pred.var"+opt.var_type)
         else:
             pred_file = opt.load_from.replace(".pt", ".test.pred")
+        if opt.eval_codenn:
+            pred_file = pred_file.replace("test", "EVAL")
         print("test_data.src: ", len(test_data.src))
+        if opt.empty_anno:
+            pred_file += ".emptyAnno"
         evaluator.eval(test_data, pred_file)
     elif opt.eval_one:
-        metrics["sent_reward"] = lib.RetReward.retrieval_mrr
+        if opt.sent_reward == "bleu":
+            metrics["sent_reward"] = lib.Reward.warpped_sentence_bleu
+        else:
+            metrics["sent_reward"] = lib.RetReward.retrieval_mrr_test
         print("eval_one..")
         evaluator = lib.Evaluator(model, metrics, dicts, opt)
         # On test set.
         pred_file = opt.load_from.replace(".pt", ".test_one.pred")
+        if opt.empty_anno:
+            pred_file += ".emptyAnno"
         evaluator.eval(vis_data, pred_file)
     elif opt.eval_sample:
+        if opt.sent_reward == "bleu":
+            metrics["sent_reward"] = lib.Reward.warpped_sentence_bleu
+        else:
+            metrics["sent_reward"] = lib.RetReward.retrieval_mrr_test
         opt.no_update = True
         critic, critic_optim = create_critic(checkpoint, dicts, opt)
         reinforce_trainer = lib.ReinforceTrainer(model, critic, rl_data, test_data,
@@ -354,9 +393,8 @@ def main():
         if opt.data_type in {"code", "hybrid"}:
             print("supervised_data.trees: ", len(supervised_data.trees))
             print("supervised_data.leafs: ", len(supervised_data.leafs))
-        xent_trainer = lib.Trainer(model, supervised_data, valid_xe_data, metrics_xe, dicts, optim, opt)
+        xent_trainer = lib.Trainer(model, supervised_data, valid_data, metrics, dicts, optim, opt)
 
-        pdb.set_trace()
         if use_critic:
             start_time = time.time()
             # Supervised training.
@@ -364,16 +402,22 @@ def main():
             print("start_epoch: ", opt.start_epoch)
 
             xent_trainer.train(opt.start_epoch, opt.start_reinforce - 1, start_time)
-            # Create critic here to not affect random seed.
-            critic, critic_optim = create_critic(checkpoint, dicts, opt)
-            # Pretrain critic.
-            print("pretrain critic...")
-            if opt.critic_pretrain_epochs > 0:
-                reinforce_trainer = lib.ReinforceTrainer(model, critic, supervised_data, valid_pg_data, metrics, dicts, optim, critic_optim, opt)
-                reinforce_trainer.train(opt.start_reinforce, opt.start_reinforce + opt.critic_pretrain_epochs - 1, True, start_time)
+
+            if opt.has_baseline:
+                # Create critic here to not affect random seed.
+                critic, critic_optim = create_critic(checkpoint, dicts, opt)
+                # Pretrain critic.
+                print("pretrain critic...")
+                if opt.critic_pretrain_epochs > 0:
+                    reinforce_trainer = lib.ReinforceTrainer(model, critic, supervised_data, valid_data, metrics, dicts, optim, critic_optim, opt)
+                    reinforce_trainer.train(opt.start_reinforce, opt.start_reinforce + opt.critic_pretrain_epochs - 1, True, start_time)
+            else:
+                print("NOTE: do not have a baseline model")
+                critic, critic_optim = None, None
+
             # Reinforce training.
             print("reinforce training...")
-            reinforce_trainer = lib.ReinforceTrainer(model, critic, rl_data, valid_pg_data, metrics, dicts, optim, critic_optim, opt)
+            reinforce_trainer = lib.ReinforceTrainer(model, critic, rl_data, valid_data, metrics, dicts, optim, critic_optim, opt)
             reinforce_trainer.train(opt.start_reinforce + opt.critic_pretrain_epochs, opt.end_epoch, False, start_time)
 
         else: # Supervised training only. Set opt.start_reinforce to None

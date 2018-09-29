@@ -11,9 +11,12 @@ import torch.nn.functional as F
 from models import JointEmbeder
 from configs import get_config
 
+GPU_ID = 0
+
 random.seed(42)
 np.random.seed(42)
 torch.manual_seed(42)
+torch.cuda.set_device(GPU_ID)
 torch.cuda.manual_seed_all(42)
 
 
@@ -65,6 +68,7 @@ def create_model_name_string(c):
 
 def _reload_model(model, conf, model_string):
     conf['model_directory'] = conf['workdir'] + 'model/' + model_string + '/'
+    print("Loading from %s..." % conf['model_directory'])
     assert os.path.exists(conf['model_directory'] + 'best_model.h5'), 'Weights for saved best model not found'
     model.load_state_dict(torch.load(conf['model_directory'] + 'best_model.h5'))
 
@@ -75,7 +79,7 @@ def gVar(data):
         tensor = torch.from_numpy(data)
 
     if torch.cuda.is_available():
-        tensor = tensor.cuda()
+        tensor = tensor.cuda(GPU_ID)
     return tensor
 
 
@@ -117,27 +121,38 @@ class CrCritic(object):
         self.conf = get_config()
 
         print("Loading Negative sample dataset")
-        self.qts, self.max_qt_len, self.qt_vocab = self._load_data_set("qt")
-        self.qbs, self.max_qb_len, self.qb_vocab = self._load_data_set("qb")
-        self.codes, self.max_code_len, self.code_vocab = self._load_data_set("code")
+        self.qts, self.qbs, self.codes, self.data_len = {}, {}, {}, {}
+        for data_name in ["valid", "test"]:
+            qts, self.max_qt_len, self.qt_vocab = self._load_data_set("qt", data_name)
+            qbs, self.max_qb_len, self.qb_vocab = self._load_data_set("qb", data_name)
+            codes, self.max_code_len, self.code_vocab = self._load_data_set("code", data_name)
+            self.qts[data_name] = qts
+            self.qbs[data_name] = qbs
+            self.codes[data_name] = codes
+            self.data_len[data_name] = len(qts)
 
-        self.data_len = len(self.qts)
-        print("Sample Data Size", self.data_len)
+        # self.qts, self.max_qt_len, self.qt_vocab = self._load_data_set("qt")
+        # self.qbs, self.max_qb_len, self.qb_vocab = self._load_data_set("qb")
+        # self.codes, self.max_code_len, self.code_vocab = self._load_data_set("code")
+
+        # self.data_len = len(self.qts)
+        # print("Sample Data Size", self.data_len)
+        print("Sample Data Size: valid %d, test %d." % (self.data_len["valid"], self.data_len["test"]))
 
         print("Loading Model")
         self.model = self._load_model()
 
-    def _load_data_set(self, data_set):
+    def _load_data_set(self, data_set, data_name):
         conf = self.conf
         if data_set == "qt":
-            data_filename, max_len, vocab_file, vocab_limit = conf['test_qt'], conf['qt_len'], conf['vocab_qt'], \
-                                                              conf['qt_n_words']
+            data_filename, max_len, vocab_file, vocab_limit = conf['%s_qt' % data_name], conf['qt_len'],\
+                                                              conf['vocab_qt'], conf['qt_n_words']
         elif data_set == "qb":
-            data_filename, max_len, vocab_file, vocab_limit = conf['test_qb'], conf['qb_len'], conf['vocab_qb'], \
-                                                              conf['qb_n_words']
+            data_filename, max_len, vocab_file, vocab_limit = conf['%s_qb' % data_name], conf['qb_len'],\
+                                                              conf['vocab_qb'], conf['qb_n_words']
         else:
-            data_filename, max_len, vocab_file, vocab_limit = conf['test_code'], conf['code_len'], conf['vocab_code'], \
-                                                              conf['code_n_words']
+            data_filename, max_len, vocab_file, vocab_limit = conf['%s_code' % data_name], conf['code_len'],\
+                                                              conf['vocab_code'], conf['code_n_words']
         path = conf['workdir']
         list_of_data = pickle.load(open(path + data_filename, 'rb'))
         vocab = limit_vocab(load_dict(path + vocab_file), vocab_limit)
@@ -150,13 +165,14 @@ class CrCritic(object):
         model = JointEmbeder(conf)
         _reload_model(model, conf, model_string)
         if torch.cuda.is_available():
-            model = model.cuda()
+            model = model.cuda(GPU_ID)
 
         model = model.eval()
         return model
 
-    def _get_negative_pool(self, poolsize, processed_code, processed_qt, processed_annotation, processed_qb):
+    def _get_negative_pool(self, data_name, poolsize, processed_code, processed_qt, processed_annotation, processed_qb):
         """
+        :param data_name: valid or test
         :param poolsize: poolsize for negative sampling
         :param processed_code: code converted to indices array
         :param processed_qt: qt converted to indices array
@@ -166,14 +182,15 @@ class CrCritic(object):
         """
         negative_qts, negative_qbs, negative_codes = [], [], []
         for i in range(poolsize-1):
-            negative_index = random.randint(0, self.data_len - 1)
-            neg_qt, neg_qb, neg_code = self.qts[negative_index], self.qbs[negative_index], self.codes[negative_index]
+            negative_index = random.randint(0, self.data_len[data_name] - 1)
+            neg_qt, neg_qb, neg_code = self.qts[data_name][negative_index], self.qbs[data_name][negative_index], \
+                                       self.codes[data_name][negative_index]
             while np.array_equal(neg_qt, processed_qt) or np.array_equal(neg_code, processed_code) or \
                     np.array_equal(neg_qb, processed_annotation) or np.array_equal(neg_qb, processed_qb):
-                negative_index = random.randint(0, self.data_len - 1)
-                neg_qt, neg_qb, neg_code = self.qts[negative_index].astype('int64'), \
-                                           self.qbs[negative_index].astype('int64'), \
-                                           self.codes[negative_index].astype('int64')
+                negative_index = random.randint(0, self.data_len[data_name] - 1)
+                neg_qt, neg_qb, neg_code = self.qts[data_name][negative_index].astype('int64'), \
+                                           self.qbs[data_name][negative_index].astype('int64'), \
+                                           self.codes[data_name][negative_index].astype('int64')
 
             negative_qts.append(neg_qt)
             negative_qbs.append(neg_qb)
@@ -181,13 +198,20 @@ class CrCritic(object):
 
         return negative_qts, negative_qbs, negative_codes
 
-    def _batchify(self, data, align_right=False, include_lengths=False):
+    def _get_negative_pool_by_id(self, data_name, pos_id):
+        pass
+
+
+    def _batchify(self, data, align_right=False, include_lengths=False, maxlength=200):
         data = [torch.from_numpy(x) for x in data]
         lengths = [x.size(0) for x in data]
-        max_length = max(lengths)
+        max_length = min(max(lengths), maxlength)
         out = data[0].new(len(data), max_length).fill_(self.conf['PAD'])
         for i in range(len(data)):
             data_length = data[i].size(0)
+            if data_length > max_length:
+                data[i] = data[i][:max_length]
+                data_length = max_length
             offset = max_length - data_length if align_right else 0
             out[i].narrow(0, offset, data_length).copy_(data[i])
 
@@ -196,7 +220,7 @@ class CrCritic(object):
         else:
             return out
 
-    def get_reward(self, code, annotation, qt, qb,
+    def get_reward(self, data_name, code, annotation, qt, qb,
                    poolsize=50, number_of_runs=1, top_n_results=-1,
                    bool_processed=False):
         """
@@ -217,7 +241,8 @@ class CrCritic(object):
         processed_annotation = np.expand_dims(process_text(annotation, self.qb_vocab) if not bool_processed else annotation, axis=0)
         processed_qb = np.expand_dims(process_text(qb, self.qb_vocab) if not bool_processed else qb, axis=0)
 
-        processed_qt, processed_code, processed_annotation = gVar(processed_qt), gVar(processed_code), \
+        processed_qt, processed_code, processed_annotation = gVar(processed_qt), \
+                                                             gVar(processed_code), \
                                                              gVar(processed_annotation)
         qt_repr = self.model.qt_encoding(processed_qt)
         code_repr = self.model.code_encoding(processed_code, processed_annotation)
@@ -225,10 +250,11 @@ class CrCritic(object):
         positive_score = positive_score[0]
 
         mrrs_in_runs = []
-        _, neg_qbs, neg_codes = self._get_negative_pool(
+        _, neg_qbs, neg_codes = self._get_negative_pool(data_name,
             (poolsize-1) * number_of_runs + 1, processed_code, processed_qt,
             processed_annotation, processed_qb)
-        neg_qbs, neg_codes = gVar(self._batchify(neg_qbs)), gVar(self._batchify(neg_codes))
+        neg_qbs, neg_codes = gVar(self._batchify(neg_qbs)), \
+                             gVar(self._batchify(neg_codes))
         neg_codes_repr = self.model.code_encoding(neg_codes, neg_qbs)
         sims_scores = F.cosine_similarity(neg_codes_repr, qt_repr).data.tolist()
         assert len(sims_scores) == (poolsize - 1) * number_of_runs
@@ -251,7 +277,7 @@ class CrCritic(object):
         mrr = np.mean(mrrs_in_runs)
         return mrr
 
-    def get_reward_in_batch(self, codes, annotations, qts, qbs,
+    def get_reward_in_batch(self, data_name, codes, annotations, qts, qbs,
                             poolsize=50, number_of_runs=1, top_n_results=-1):
         """
         :param codes: A list of cleaned-up processed codes
@@ -264,8 +290,9 @@ class CrCritic(object):
         :return: Mean MRR score for the given inputs
         """
 
-        processed_qts, processed_codes, processed_annotations = gVar(self._batchify(qts)), gVar(self._batchify(codes)), \
-                                                             gVar(self._batchify(annotations))
+        processed_qts, processed_codes, processed_annotations = gVar(self._batchify(qts)), \
+                                                                gVar(self._batchify(codes)), \
+                                                                gVar(self._batchify(annotations))
         qts_repr = self.model.qt_encoding(processed_qts)
         codes_repr = self.model.code_encoding(processed_codes, processed_annotations)
         positive_scores = F.cosine_similarity(codes_repr, qts_repr).data.tolist()
@@ -273,12 +300,13 @@ class CrCritic(object):
         # collect negative pools
         all_neg_qbs, all_neg_codes = [], []
         for code, annotation, qt, qb in zip(codes, annotations, qts, qbs):
-            _, neg_qbs, neg_codes = self._get_negative_pool(
+            _, neg_qbs, neg_codes = self._get_negative_pool(data_name,
                 (poolsize - 1) * number_of_runs + 1, code, qt, annotation, qb)
             all_neg_qbs.extend(neg_qbs)
             all_neg_codes.extend(neg_codes)
 
-        all_neg_qbs, all_neg_codes = gVar(self._batchify(all_neg_qbs)), gVar(self._batchify(all_neg_codes))
+        all_neg_qbs, all_neg_codes = gVar(self._batchify(all_neg_qbs)), \
+                                     gVar(self._batchify(all_neg_codes))
         all_neg_codes_repr = self.model.code_encoding(all_neg_codes, all_neg_qbs)
 
         mrrs = []

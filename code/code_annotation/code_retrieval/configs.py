@@ -9,9 +9,13 @@ def get_config():
         'EOS': 2,
         'UNK': 3,
 
-        'test_qt': 'sql.test.qt.pkl',
-        'test_code': 'sql.test.code.pkl',
-        'test_qb': 'sql.test.qb.pkl',
+        'test_qt': 'sql.test.cut.qt.pkl',
+        'test_code': 'sql.test.cut.code.pkl',
+        'test_qb': 'sql.test.cut.qb.pkl',
+
+        'valid_qt': 'sql.valid.cut.qt.pkl',
+        'valid_code': 'sql.valid.cut.code.pkl',
+        'valid_qb': 'sql.valid.cut.qb.pkl',
 
         # parameters
         'qt_len': 14,  # 9,

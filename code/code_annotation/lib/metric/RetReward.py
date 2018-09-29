@@ -1,5 +1,6 @@
 import numpy as np
 import lib
+
 import code_retrieval
 cr = code_retrieval.CrCritic()
 
@@ -27,21 +28,21 @@ def clean_up_ids(noisy_ids):
     return np.array(noisy_ids)
 
 
-def sentence_retrieval_mrr(code, annotation, qt, qb, number_of_runs):
+def sentence_retrieval_mrr(data_name, code, annotation, qt, qb, number_of_runs):
     length = len(annotation)
     code, annotation, qt, qb = clean_up_ids(code), clean_up_ids(annotation), clean_up_ids(qt), clean_up_ids(qb)
-    if code is None or annotation is None or qt is None or qb is None:
-        mrr = 0.0
+    if annotation is None:
         annotation = [lib.Constants.PAD] * length
     else:
-        mrr = cr.get_reward(code, annotation, qt, qb, number_of_runs=number_of_runs, bool_processed=True)
         annotation = list(annotation)
         annotation += [lib.Constants.PAD] * (length - len(annotation))
+    mrr = cr.get_reward(data_name, code, annotation, qt, qb,
+                        number_of_runs=number_of_runs, bool_processed=True)
 
     return mrr, annotation
 
 
-def retrieval_mrr(codes, annotations, qts, qbs):
+def retrieval_mrr_valid(codes, annotations, qts, qbs):
     # cleaned_codes = [clean_up_ids(code) for code in codes]
     # cleaned_annotations = [clean_up_ids(annotation) for annotation in annotations]
     # cleaned_qts = [clean_up_ids(qt) for qt in qts]
@@ -54,19 +55,21 @@ def retrieval_mrr(codes, annotations, qts, qbs):
     mrrs = []
 
     for code, annotation, qt, qb in zip(codes, annotations, qts, qbs):
-        mrr, cleaned_annotation = sentence_retrieval_mrr(code, annotation, qt, qb, 1)
+        mrr, cleaned_annotation = sentence_retrieval_mrr("valid", code, annotation, qt, qb, 1)
         mrrs.append(mrr)
         cleaned_annotations.append(cleaned_annotation)
 
     return mrrs, cleaned_annotations
 
-def retrieval_mrr_precise(codes, annotations, qts, qbs):
+
+def retrieval_mrr_test(codes, annotations, qts, qbs):
     cleaned_annotations = []
     mrrs = []
 
     for code, annotation, qt, qb in zip(codes, annotations, qts, qbs):
-        mrr, cleaned_annotation = sentence_retrieval_mrr(code, annotation, qt, qb, 3)
+        mrr, cleaned_annotation = sentence_retrieval_mrr("test", code, annotation, qt, qb, 1)
         mrrs.append(mrr)
         cleaned_annotations.append(cleaned_annotation)
 
     return mrrs, cleaned_annotations
+

@@ -37,18 +37,25 @@ class ReinforceTrainer(object):
             self.start_time = time.time()
         else:
             self.start_time = start_time
-        self.optim.last_loss = self.critic_optim.last_loss = None
+        self.optim.last_loss = None
         self.optim.set_lr(self.opt.reinforce_lr)
 
-        #  Use large learning rate for critic during pre-training.
-        if pretrain_critic:
-            self.critic_optim.set_lr(1e-3)
-        else:
-            self.critic_optim.set_lr(self.opt.reinforce_lr)
+        if self.opt.has_baseline:
+            self.critic_optim.last_loss = None
+            #  Use large learning rate for critic during pre-training.
+            if pretrain_critic:
+                self.critic_optim.set_lr(1e-3)
+            else:
+                self.critic_optim.set_lr(self.opt.reinforce_lr)
 
         for epoch in range(start_epoch, end_epoch + 1):
             print("* REINFORCE epoch *")
-            print("Actor optim lr: %g; Critic optim lr: %g" % (self.optim.lr, self.critic_optim.lr))
+            print("Actor optim lr: %g; Critic optim lr: %g" % (
+                self.optim.lr, self.critic_optim.lr if self.opt.has_baseline else 0))
+            if self.optim.lr < lib.Constants.MIN_LR:
+                print("(Actor) Early stop when learning rate is lower than %s" % (str(lib.Constants.MIN_LR)))
+                break
+
             if pretrain_critic:
                 print("Pretrain critic...")
             no_update = self.opt.no_update and (not pretrain_critic) and (epoch == start_epoch)
@@ -58,32 +65,38 @@ class ReinforceTrainer(object):
             train_reward, critic_loss = self.train_epoch(epoch, pretrain_critic, no_update)
             print("Train sentence reward: %.2f" % (train_reward * 100))
             print("Critic loss: %g" % critic_loss)
-            # sys.exit()
-            valid_loss, valid_sent_reward, valid_corpus_reward = self.evaluator.eval(self.eval_data)
-            valid_ppl = math.exp(min(valid_loss, 100))
-            print("Validation perplexity: %.2f" % valid_ppl)
-            print("Validation sentence reward: %.2f" % (valid_sent_reward * 100))
-            print("Validation corpus reward: %.2f" % (valid_corpus_reward * 100))
+
+            if not pretrain_critic:
+                # evaluate the actor model on validation set
+                valid_loss, valid_sent_reward, valid_corpus_reward = self.evaluator.eval(self.eval_data)
+                valid_ppl = math.exp(min(valid_loss, 100))
+                print("Validation perplexity: %.2f" % valid_ppl)
+                print("Validation sentence reward: %.2f" % (valid_sent_reward * 100))
+                print("Validation corpus reward: %.2f" % (valid_corpus_reward * 100))
+            else:
+                print("Pretraining critic...no eval on actor...")
 
             if no_update: break
 
-            self.optim.updateLearningRate(-valid_sent_reward, epoch)
-            # Actor and critic use the same lr when jointly trained.
-            # TODO: using small lr for critic is better?
             if not pretrain_critic:
-                self.critic_optim.set_lr(self.optim.lr)
+                self.optim.updateLearningRate(-valid_sent_reward, epoch)
+                # Actor and critic use the same lr when jointly trained.
+                # if not pretrain_critic:
+                if self.opt.has_baseline:
+                    self.critic_optim.set_lr(self.optim.lr)
 
             checkpoint = {
                 "model": self.actor,
-                "critic": self.critic,
                 "dicts": self.dicts,
                 "opt": self.opt,
                 "epoch": epoch,
-                "optim": self.optim,
-                "critic_optim": self.critic_optim
+                "optim": self.optim
             }
-            model_name = os.path.join(self.opt.save_dir, "%smodel_rf_%s_%s_%s" % (
-                self.opt.data_name, self.opt.data_type, self.opt.has_attn, epoch))
+            if self.opt.has_baseline:
+                checkpoint.update({"critic": self.critic, "critic_optim": self.critic_optim})
+            model_name = os.path.join(self.opt.save_dir, "%smodel_rf_%s_attn%s_brnn%s_decay%d_%s" % (
+                self.opt.data_name, "hasBaseline" if self.opt.has_baseline else "noBaseline",
+                self.opt.has_attn, self.opt.brnn, self.opt.start_decay_at, epoch))
             if pretrain_critic:
                 model_name += "_pretrain"
             else:
@@ -99,12 +112,11 @@ class ReinforceTrainer(object):
         total_sents, report_sents = 0, 0
         total_words, report_words = 0, 0
         last_time = time.time()
-        # batch_order = torch.randperm(len(self.train_data))
 
         self.train_data.shuffle()
 
-        for i in range(len(self.train_data)): #
-            batch = self.train_data[i] # batch_order[i]
+        for i in range(len(self.train_data)):
+            batch = self.train_data[i]
             if self.opt.data_type == 'code':
                 targets = batch[2]
                 attention_mask = batch[1][2][0].data.eq(lib.Constants.PAD).t()
@@ -121,7 +133,8 @@ class ReinforceTrainer(object):
             batch_size = targets.size(1)
 
             self.actor.zero_grad()
-            self.critic.zero_grad()
+            if self.opt.has_baseline:
+                self.critic.zero_grad()
 
             # Sample translations
             if self.opt.has_attn:
@@ -149,26 +162,32 @@ class ReinforceTrainer(object):
                 samples = samples.cuda()
                 rewards = rewards.cuda()
 
-            # Update critic.
             critic_weights = samples.ne(lib.Constants.PAD).float()
             num_words = critic_weights.data.sum()
-            if not no_update:
-                if self.opt.data_type == 'code':
-                    baselines = self.critic((batch[0], batch[1], samples, batch[3]), eval=False, regression=True)
-                elif self.opt.data_type == 'text':
-                    baselines = self.critic((batch[0], batch[1], samples, batch[3]), eval=False, regression=True)
-                elif self.opt.data_type == 'hybrid':
-                    baselines = self.critic((batch[0], batch[1], samples, batch[3]), eval=False, regression=True)
+            if self.opt.has_baseline:
+                # Update critic.
+                if not no_update:
+                    if self.opt.data_type == 'code':
+                        baselines = self.critic((batch[0], batch[1], samples, batch[3]), eval=False, regression=True)
+                    elif self.opt.data_type == 'text':
+                        baselines = self.critic((batch[0], batch[1], samples, batch[3]), eval=False, regression=True)
+                    elif self.opt.data_type == 'hybrid':
+                        baselines = self.critic((batch[0], batch[1], samples, batch[3]), eval=False, regression=True)
 
-                critic_loss = self.critic.backward(baselines, rewards, critic_weights, num_words, self.critic_loss_func, regression=True)
-                self.critic_optim.step()
+                    critic_loss = self.critic.backward(baselines, rewards, critic_weights, num_words, self.critic_loss_func, regression=True)
+                    self.critic_optim.step()
+                else:
+                    critic_loss = 0
             else:
                 critic_loss = 0
 
             # Update actor
             if not pretrain_critic and not no_update:
-                # Subtract baseline from reward
-                norm_rewards = Variable((rewards - baselines).data)
+                if self.opt.has_baseline:
+                    # Subtract baseline from reward
+                    norm_rewards = Variable((rewards - baselines).data)
+                else:
+                    norm_rewards = Variable(rewards.data)
                 actor_weights = norm_rewards * critic_weights
                 # TODO: can use PyTorch reinforce() here but that function is a black box.
                 # This is an alternative way where you specify an objective that gives the same gradient

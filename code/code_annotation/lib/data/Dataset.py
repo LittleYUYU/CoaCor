@@ -22,7 +22,8 @@ class Dataset(object):
         self.cuda = cuda
 
         self.batchSize = batchSize
-        self.numBatches = int(math.ceil(len(self.src)/batchSize)-1)
+        # self.numBatches = int(math.ceil(len(self.src)/batchSize)-1)
+        self.numBatches = int(math.ceil(len(self.src) * 1.0 / batchSize))
         self.eval = eval
 
     def _batchify(self, data, align_right=False, include_lengths=False):

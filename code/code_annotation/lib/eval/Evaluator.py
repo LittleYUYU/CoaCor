@@ -29,6 +29,7 @@ class Evaluator(object):
             all_targets = []
             all_srcs = []
             all_qts = []
+            all_rewards = []
             for i in range(len(data)): #
                 batch = data[i]
 
@@ -61,12 +62,15 @@ class Evaluator(object):
                 num_words = weights.data.sum()
                 _, loss = self.model.predict(outputs, targets, weights, self.loss_func)
 
-                preds = self.model.translate(batch, self.max_length)
-                preds = preds.t().tolist()
                 srcs = batch[0][0]
                 srcs = srcs.data.t().tolist()
+                if self.opt.empty_anno:
+                    preds = [[lib.Constants.EOS] for _ in range(len(srcs))]
+                else:
+                    preds = self.model.translate(batch, self.max_length)
+                    preds = preds.t().tolist()
                 targets = targets.data.t().tolist()
-                qts = [item.tolist() for item in qts]
+                qts = [item.tolist() if item is not None else None for item in qts]
 
                 if self.sent_reward_func is not None:
                     # s0 = time.time()
@@ -79,6 +83,7 @@ class Evaluator(object):
                 all_targets.extend(targets)
                 all_srcs.extend(srcs)
                 all_qts.extend(qts)
+                all_rewards.extend(rewards)
 
                 total_loss += loss
                 total_words += num_words
@@ -99,18 +104,19 @@ class Evaluator(object):
                 corpus_reward = 0.0
 
             if pred_file is not None:
-                self._convert_and_report(data, pred_file, all_preds, all_targets, all_srcs, all_qts,
+                self._convert_and_report(data, pred_file, all_preds, all_targets, all_srcs, all_qts, all_rewards,
                                          (loss, sent_reward, corpus_reward))
 
             return loss, sent_reward, corpus_reward
 
-    def _convert_and_report(self, data, pred_file, preds, targets, srcs, qts, metrics):
+    def _convert_and_report(self, data, pred_file, preds, targets, srcs, qts, rewards, metrics):
         with open(pred_file, "w") as f:
             for i in range(len(preds)):
                 pred = preds[i]
                 target = targets[i]
                 src = srcs[i]
                 qt = qts[i]
+                rw = rewards[i]
 
                 src = lib.Reward.clean_up_sentence(src, remove_unk=False, remove_eos=True)
                 pred = lib.Reward.clean_up_sentence(pred, remove_unk=False, remove_eos=True)
@@ -119,12 +125,14 @@ class Evaluator(object):
                 src = [self.dicts["src"].getLabel(w) for w in src]
                 pred = [self.dicts["tgt"].getLabel(w) for w in pred]
                 tgt = [self.dicts["tgt"].getLabel(w) for w in target]
-                qt = [self.dicts["qt"].getLabel(w) for w in qt]
+                qt = [self.dicts["qt"].getLabel(w) for w in qt] if qt is not None else qt
 
                 f.write(str(i) + ": src: "+ " ".join(src).encode('utf-8', 'ignore') + '\n')
                 f.write(str(i) + ": pre: " + " ".join(pred).encode('utf-8', 'ignore') + '\n')
                 f.write(str(i) + ": tgt: "+ " ".join(tgt).encode('utf-8', 'ignore') + '\n')
-                f.write(str(i) + ": qt: " + " ".join(qt).encode('utf-8', 'ignore') + '\n')
+                if qt is not None:
+                    f.write(str(i) + ": qt: " + " ".join(qt).encode('utf-8', 'ignore') + '\n')
+                f.write(str(i) + ": reward: " + str(rw) + '\n')
 
         loss, sent_reward, corpus_reward = metrics
         print("")
