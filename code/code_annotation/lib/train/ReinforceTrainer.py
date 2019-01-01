@@ -7,7 +7,7 @@ from torch.autograd import Variable
 import torch
 
 import lib
-import sys
+import pdb
 
 
 class ReinforceTrainer(object):
@@ -17,11 +17,12 @@ class ReinforceTrainer(object):
 
         self.train_data = train_data
         self.eval_data = eval_data
+        print("\n* eval_data size: %d" % len(eval_data.src))
         self.evaluator = lib.Evaluator(actor, metrics, dicts, opt)
 
         self.actor_loss_func = metrics["xent_loss"]
         self.critic_loss_func = metrics["critic_loss"]
-        self.sent_reward_func = metrics["sent_reward"]
+        self.sent_reward_func = metrics["sent_reward"]["train"]
 
         self.dicts = dicts
 
@@ -66,15 +67,16 @@ class ReinforceTrainer(object):
             print("Train sentence reward: %.2f" % (train_reward * 100))
             print("Critic loss: %g" % critic_loss)
 
-            if not pretrain_critic:
-                # evaluate the actor model on validation set
-                valid_loss, valid_sent_reward, valid_corpus_reward = self.evaluator.eval(self.eval_data)
-                valid_ppl = math.exp(min(valid_loss, 100))
-                print("Validation perplexity: %.2f" % valid_ppl)
-                print("Validation sentence reward: %.2f" % (valid_sent_reward * 100))
-                print("Validation corpus reward: %.2f" % (valid_corpus_reward * 100))
-            else:
-                print("Pretraining critic...no eval on actor...")
+            # if not pretrain_critic:
+            # evaluate the actor model on validation set
+            valid_loss, valid_sent_reward, valid_corpus_reward = self.evaluator.eval(self.eval_data)
+            valid_ppl = math.exp(min(valid_loss, 100))
+            print("Validation perplexity: %.2f" % valid_ppl)
+            print("Validation sentence reward: %.2f" % (valid_sent_reward * 100))
+            print("Validation corpus reward: %.2f" % (valid_corpus_reward * 100))
+
+            # else:
+            #     print("Pretraining critic...no eval on actor...")
 
             if no_update: break
 
@@ -94,14 +96,20 @@ class ReinforceTrainer(object):
             }
             if self.opt.has_baseline:
                 checkpoint.update({"critic": self.critic, "critic_optim": self.critic_optim})
-            model_name = os.path.join(self.opt.save_dir, "%smodel_rf_%s_attn%s_brnn%s_decay%d_%s" % (
-                self.opt.data_name, "hasBaseline" if self.opt.has_baseline else "noBaseline",
-                self.opt.has_attn, self.opt.brnn, self.opt.start_decay_at, epoch))
+
+            save_name = "%smodel_rf_%s%s" % (
+                self.opt.data_name, "hasBaseline" if self.opt.has_baseline else "noBaseline", self.opt.show_str)
             if pretrain_critic:
-                model_name += "_pretrain"
+                save_name += "_pretrain"
             else:
-                model_name += "_reinforce"
-            model_name += ".pt"
+                save_name += "_reinforce"
+
+            save_dir = os.path.join(self.opt.save_dir, save_name)
+            if not os.path.exists(save_dir):
+                os.makedirs(save_dir)
+
+            model_name = os.path.join(save_dir, "%s_%s.pt" % (save_name, epoch))
+
             torch.save(checkpoint, model_name)
             print("Save model as %s" % model_name)
 
@@ -128,7 +136,7 @@ class ReinforceTrainer(object):
                 attention_mask_code = batch[1][2][0].data.eq(lib.Constants.PAD).t()
                 attention_mask_txt = batch[0][0].data.eq(lib.Constants.PAD).t()
 
-            qts = batch[-1]
+            qts = batch[4]
 
             batch_size = targets.size(1)
 
@@ -147,8 +155,9 @@ class ReinforceTrainer(object):
             # Calculate rewards
             # s0 = time.time()
             rewards, samples = self.sent_reward_func(
-                batch[0][0].t().tolist(), samples.t().tolist(),
-                [item.tolist() for item in qts], targets.data.t().tolist())
+                samples.t().tolist(), targets.data.t().tolist(),
+                codes=batch[0][0].t().tolist(),
+                qts=[item.tolist() for item in qts])
             reward = sum(rewards)
             # print("Eval one batch time: %.2f" % (time.time() - s0))
 

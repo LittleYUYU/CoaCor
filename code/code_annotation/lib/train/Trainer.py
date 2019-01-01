@@ -11,10 +11,16 @@ import sys
 
 
 class Trainer(object):
-    def __init__(self, model, train_data, eval_data, metrics, dicts, optim, opt):
+    def __init__(self, model, train_data, eval_data, metrics, dicts, optim, opt, DEV=None):
         self.model = model
         self.train_data = train_data
         self.eval_data = eval_data
+        print("\n* eval_data size: %d" % len(eval_data.src))
+        self.DEV = DEV
+        if DEV is not None:
+            print("* DEV size: %d" % len(DEV.src))
+        else:
+            print("* No DEV")
         self.evaluator = lib.Evaluator(model, metrics, dicts, opt)
         self.loss_func = metrics["xent_loss"]
         self.dicts = dicts
@@ -42,6 +48,13 @@ class Trainer(object):
             print('Validation perplexity: %.2f' % valid_ppl)
             print('Validation sentence reward: %.2f' % (valid_sent_reward * 100))
             print('Validation corpus reward: %.2f' % (valid_corpus_reward * 100))
+
+            if self.DEV is not None:
+                dev_loss, dev_sent_reward, dev_corpus_reward = self.evaluator.eval(self.DEV)
+                dev_ppl = math.exp(min(dev_loss, 100))
+                print('DEV perplexity: %.2f' % dev_ppl)
+                print('DEV sentence reward: %.2f' % (dev_sent_reward * 100))
+                print('DEV corpus reward: %.2f' % (dev_corpus_reward))
 
             self.optim.updateLearningRate(valid_loss, epoch)
 
