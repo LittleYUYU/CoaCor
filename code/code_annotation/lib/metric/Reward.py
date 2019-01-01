@@ -42,5 +42,6 @@ def corpus_bleu(preds, golds):
         clean_golds.append(gold)
     return lib.Bleu.score_corpus(clean_preds, clean_golds, 4)
 
-def warpped_sentence_bleu(srcs, preds, qts, targets):
+
+def warpped_sentence_bleu(preds, targets, **kwargs):
     return sentence_bleu(preds, targets)

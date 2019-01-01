@@ -18,7 +18,8 @@ def _compute_bleu(p, len_pred, len_gold, smooth):
         if p[n][1] > 0:
             if p[n][0] == 0:
                 p[n][0] = 1e-16
-            log_precision = math.log((p[n][0] + smooth) / (p[n][1] + smooth))
+            addsmooth = smooth if n > 1 else 0.0
+            log_precision = math.log((p[n][0] + addsmooth) / (p[n][1] + addsmooth))
             log_score += log_precision
     log_score /= ngrams
     return math.exp(log_score + log_brevity)

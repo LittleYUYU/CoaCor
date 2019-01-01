@@ -13,8 +13,11 @@ import numpy as np
 import os.path
 from torch.autograd import Variable
 import random
-from lib.data.Tree import *
+import gensim
+# from lib.data.Tree import *
 import time
+import pickle
+import code_retrieval
 
 # # to deal with version incompatible
 # import torch._utils
@@ -33,14 +36,27 @@ def get_opt():
     parser = argparse.ArgumentParser(description='a2c-train.py')
     # Data options
     parser.add_argument('-data', required=True, help='Path to the *-train.pt file from preprocess.py')
-    # parser.add_argument('-lang', required=True, help='Language {python|sql}')
+    parser.add_argument('-lang', required=True, choices=['sql', 'python'], help='Language {python|sql}')
     parser.add_argument('-data_name', default="", help="Data name, such as toy")
     parser.add_argument('-save_dir', required=True, help='Directory to save models')
     parser.add_argument("-load_from", help="Path to load a pretrained model.")
     parser.add_argument("-show_str", required=True, help="string of arguments for saving models.")
-    parser.add_argument('-embedding_w2v', required=False, help='Path to the *-embedding_w2v file from preprocess.py')
+    parser.add_argument('-load_embedding_from', required=False, help='Path to load the embedding.')
     parser.add_argument('-train_portion', type=float, default=0.6)
     parser.add_argument('-dev_portion', type=float, default=0.2)
+    parser.add_argument('-cr_setup', default="default",
+                        choices=["default", "slrnd", "slrnd_loadPre", "loadPre", "qt_new_cleaned_sl_qb_loadPre_fixPre",
+                                 "qt_new_cleaned_rl_mrr_qb_loadPre_fixPre", "tp_qt_new_cleaned_rl_mrr_qb"],
+                        help="The CR model setup.")
+    parser.add_argument('-cr_replace_all_train', type=int, default=0,
+                        help="Set to 1 for replacing annos for all examples in training.")
+    parser.add_argument('-cr_replace_all_eval', type=int, default=0,
+                        help="Set to 1 for replacing annos for all examples in evaluation.")
+    parser.add_argument('-cr_qt_candidates_train', type=int, default=0,
+                        help="Set to 1 for considering QTs as candidates in training.")
+    parser.add_argument('-cr_qt_candidates_eval', type=int, default=0,
+                        help="Set to 1 for considering QTs as candidates in evaluation.")
+
     # Model options
     parser.add_argument('-layers', type=int, default=1, help='Number of layers in the LSTM encoder/decoder')
     parser.add_argument('-rnn_size', type=int, default=512, help='Size of LSTM hidden states')
@@ -55,7 +71,7 @@ def get_opt():
     # Optimization options
     parser.add_argument('-data_type', default='text', help="Type of encoder to use. Options are [text|code|hybrid].")
     parser.add_argument('-batch_size', type=int, default=64, help='Maximum batch size')
-    parser.add_argument("-max_generator_batches", type=int, default=32, help="""Split softmax input into small batches for memory efficiency. Higher is faster, but uses more memory.""")
+    parser.add_argument("-max_generator_batches", type=int, default=128, help="""Split softmax input into small batches for memory efficiency. Higher is faster, but uses more memory.""")
 
     parser.add_argument("-end_epoch", type=int, default=50, help="Epoch to stop training.")
     parser.add_argument("-start_epoch", type=int, default=1, help="Epoch to start training.")
@@ -84,14 +100,20 @@ def get_opt():
     parser.add_argument("-critic_pretrain_epochs", type=int, default=0, help="Number of epochs to pretrain critic (actor fixed).")
     parser.add_argument("-reinforce_lr", type=float, default=1e-4, help="""Learning rate for reinforcement training.""")
 
+    # Generation
+    parser.add_argument("-max_predict_length", required=True, type=int, default=20, help="Maximum length of predictions.")
+    parser.add_argument("-predict_mask", type=int, default=0, help="Set to 1 for avoiding repeatitive words and UNK in eval.")
+
     # Evaluation
     parser.add_argument("-eval", action="store_true", help="Evaluate model only")
     parser.add_argument("-eval_one", action="store_true", help="Evaluate only one sample.")
     parser.add_argument("-eval_sample", action="store_true", default=False, help="Eval by sampling")
-    parser.add_argument("-max_predict_length", type=int, default=100, help="Maximum length of predictions.")
-    parser.add_argument("-sent_reward", default="cr", help="{cr|bleu}")
+    parser.add_argument("-sent_reward", default="cr", choices=["cr", "cr_diff", "bleu", "cr_noqb"], help="Sentence reward.")
     parser.add_argument("-eval_codenn", action="store_true", help="Set to True to evaluate on codenn DEV/EVAL. Used for evaluation only.")
+    parser.add_argument("-eval_codenn_all", action="store_true",
+                        help="Set to True to evaluate on codenn test set. Used for evaluation only.")
     parser.add_argument("-empty_anno", action="store_true", help="Set to True to feed empty annotations.")
+    parser.add_argument("-collect_anno", action="store_true", help="Set to True to collect generated annotations.")
 
     # # Reward shaping
     # parser.add_argument("-pert_func", type=str, default=None, help="Reward-shaping function.")
@@ -124,7 +146,7 @@ def get_data_leafs(trees, srcDicts):
     for tree in trees:
         leaf_contents = tree.leaf_contents()
 
-        leafs.append(srcDicts.convertToIdx(leaf_contents, Constants.UNK_WORD))
+        leafs.append(srcDicts.convertToIdx(leaf_contents, lib.Constants.UNK_WORD))
     return leafs
 
 def sort_test(dataset):
@@ -157,27 +179,78 @@ def load_data(opt):
         dataset["test"]['leafs'] = get_data_leafs(dataset["test"]['trees'], dicts['src'])
     else:
         size = len(dataset["train"]["src"])
-        for item in ["train", "valid", "test"]:
+        for item in ["train", "valid", "test", "DEV", "EVAL"]:
+            if item not in dataset:
+                print("%s does not exist!" % item)
+                continue
             dataset[item]['trees'] = [None] * size
             dataset[item]['leafs'] = [None] * size
 
     supervised_data = lib.Dataset(dataset["train"], opt.batch_size, opt.cuda, opt.data_type, eval=False)
     rl_data = lib.Dataset(dataset["train"], opt.batch_size, opt.cuda, opt.data_type, eval=False)
-    valid_data = lib.Dataset(dataset["valid"], opt.batch_size, opt.cuda, opt.data_type, eval=True)
+    valid_data = lib.Dataset(dataset["valid"], 50, opt.cuda, opt.data_type, eval=True) #opt.batch_size
     # valid_pg_data = lib.Dataset(dataset["valid_pg"], opt.batch_size, opt.cuda, opt.data_type, eval=True)
-    test_data = lib.Dataset(dataset["test"], opt.batch_size, opt.cuda, opt.data_type, eval=True)
+    test_data = lib.Dataset(dataset["test"], 50, opt.cuda, opt.data_type, eval=True)
     vis_data = lib.Dataset(dataset["test"], 1, opt.cuda, opt.data_type, eval=True) # batch_size set to 1 for case study
+
+    if "DEV" in dataset:
+        DEV = lib.Dataset(dataset['DEV'], opt.batch_size, opt.cuda, opt.data_type, eval=True)
+        EVAL = lib.Dataset(dataset['EVAL'], opt.batch_size, opt.cuda, opt.data_type, eval=True)
+    else:
+        DEV = None
+        EVAL = None
 
     print(" * vocabulary size. source = %d; target = %d" % (dicts["src"].size(), dicts["tgt"].size()))
     print(" * number of XENT training sentences. %d" % len(dataset["train"]["src"]))
     print(" * number of PG training sentences. %d" % len(dataset["train"]["src"]))
+    print(" * number of val sentences. %d" % len(dataset["valid"]["src"]))
+    print(" * number of test sentences. %d" % len(dataset["test"]["src"]))
+    if "DEV" in dataset:
+        print(" * number of DEV sentences. %d" % len(dataset["DEV"]["src"]))
+        print(" * number of EVAL sentences. %d" % len(dataset["EVAL"]["src"]))
     print(" * maximum batch size. %d" % opt.batch_size)
 
-    return dicts, supervised_data, rl_data, valid_data, test_data, vis_data
+    return dicts, supervised_data, rl_data, valid_data, test_data, vis_data, DEV, EVAL
 
-def init(model):
+def get_aligned_embedding(emb_old, dict):
+    """
+    Get an aligned embedding. Missing values will be randomly initialized.
+    :param emb_old: a matrix of shape [vocab_size, vec_dim].
+    :param dict: a Dict type of dictionary.
+    :return:
+    """
+    w2v = emb_old.wv
+    print("INFO: The pretrained emb matrix contains %d words, while the given dict contains %d words..." % (
+        len(w2v.vocab), dict.size()))
+
+    emb = []
+    for idx, word in dict.idxToLabel.items():
+        if word in w2v:
+            emb.append(w2v[word])
+        else:
+            emb.append(np.random.uniform(-opt.param_init, opt.param_init, opt.word_vec_size))
+
+    emb = torch.Tensor(emb)
+    if opt.cuda:
+        emb = emb.cuda()
+
+    return emb
+
+
+def init(model, dicts):
     for p in model.parameters():
         p.data.uniform_(-opt.param_init, opt.param_init)
+
+    if opt.load_embedding_from is not None:
+        emb_src = gensim.models.Word2Vec.load(opt.load_embedding_from + '%s.processed_all.train_xe.src.gz' % opt.lang)
+        aligned_emb_src = get_aligned_embedding(emb_src, dicts['src'])
+        emb_tgt = gensim.models.Word2Vec.load(opt.load_embedding_from + '%s.processed_all.train_xe.tgt.gz' % opt.lang)
+        aligned_emb_tgt = get_aligned_embedding(emb_tgt, dicts['tgt'])
+        print("Loading pretrained W2V...")
+        pretrained_params = {"encoder.word_lut.weight": aligned_emb_src,
+                             "decoder.word_lut.weight": aligned_emb_tgt}
+        model.load_state_dict(pretrained_params, strict=False)
+
 
 def create_optim(model):
     optim = lib.Optim(
@@ -202,7 +275,6 @@ def create_model(model_class, dicts, gen_out_size):
 
     # Use memory efficient generator when output size is large and
     # max_generator_batches is smaller than batch_size.
-    opt.max_generator_batches = opt.batch_size
     if opt.max_generator_batches < opt.batch_size and gen_out_size > 1:
         generator = lib.MemEfficientGenerator(nn.Linear(opt.rnn_size, gen_out_size), opt)
     else:
@@ -213,7 +285,7 @@ def create_model(model_class, dicts, gen_out_size):
         model = model_class(code_encoder, text_encoder, decoder, generator, opt)
     else:
         raise Exception("Invalid data_type!")
-    init(model)
+    init(model, dicts)
     optim = create_optim(model)
 
     return model, optim
@@ -234,6 +306,7 @@ def create_critic(checkpoint, dicts, opt):
     if opt.cuda:
         critic.cuda(opt.gpus[0])
     return critic, critic_optim
+
 
 def main():
     print("Start...")
@@ -257,7 +330,7 @@ def main():
         cuda.set_device(opt.gpus[0])
         torch.cuda.manual_seed(opt.seed)
 
-    dicts, supervised_data, rl_data, valid_data, test_data, vis_data = load_data(opt)
+    dicts, supervised_data, rl_data, valid_data, test_data, vis_data, DEV, EVAL = load_data(opt)
 
     print("Building model...")
 
@@ -277,14 +350,23 @@ def main():
         else:
             raise Exception("Invalid data_type!")
         checkpoint = None
-        print("model: ", model)
-        print("optim: ", optim)
+
     else:
         print("Loading from checkpoint at %s" % opt.load_from)
         checkpoint = torch.load(opt.load_from)#, map_location=lambda storage, loc: storage)
         model = checkpoint["model"]
+        # config testing
+        #if opt.eval or opt.eval_sample or opt.eval_one:
+        for attribute in ["predict_mask", "max_predict_length"]:
+            model.opt.__dict__[attribute] = opt.__dict__[attribute]
         optim = checkpoint["optim"]
+        optim.start_decay_at = opt.start_decay_at
+        if optim.start_decay_at > opt.end_epoch:
+            print("No decay!")
         opt.start_epoch = checkpoint["epoch"] + 1
+
+    print("model: ", model)
+    print("optim: ", optim)
 
     # GPU.
     if opt.cuda:
@@ -304,22 +386,48 @@ def main():
     nParams = sum([p.nelement() for p in model.parameters()])
     print("* number of parameters: %d" % nParams)
 
+    if opt.sent_reward != "bleu":
+        lib.RetReward.reward_mode = opt.sent_reward
+
+        # cr model to give the reward
+        print("CR setup: %s " % opt.cr_setup)
+        qt_dict_map = None
+        if opt.sent_reward == "cr_noqb":
+            path_to_qt_dict_map = os.path.join(os.path.dirname(opt.data), "qt_dict_map.pkl")
+            print("\n** Loading qt_dict_map from %s" % path_to_qt_dict_map)
+            qt_dict_map = pickle.load(open(path_to_qt_dict_map))
+
+        lib.RetReward.cr = code_retrieval.CrCritic(opt.cr_setup, qt_dict_map)
+
+        if opt.sent_reward in ["cr", "cr_diff"]:
+            lib.RetReward.replace_all_train = opt.cr_replace_all_train
+            if lib.RetReward.replace_all_train:
+                lib.RetReward.cal_mode_train = "batch"
+
+            lib.RetReward.replace_all_eval = opt.cr_replace_all_eval
+            assert lib.RetReward.cal_mode_eval == "batch"
+
+            lib.RetReward.qt_candidates_train = opt.cr_qt_candidates_train
+            lib.RetReward.qt_candidates_eval = opt.cr_qt_candidates_eval
+            if lib.RetReward.qt_candidates_train:
+                assert lib.RetReward.cal_mode_train == "batch", "qt_candidates_train works only in batch cal mode!"
+
+            print("train: cr_replace_all %d, cal_mode %s, qt_candidates_train %d." % (
+                lib.RetReward.replace_all_train, lib.RetReward.cal_mode_train, lib.RetReward.qt_candidates_train))
+            print("eval: cr_replace_all %d, cal_mode %s, qt_candidates_eval %d" % (
+            lib.RetReward.replace_all_eval, lib.RetReward.cal_mode_eval, lib.RetReward.qt_candidates_eval))
+
     # Metrics.
     print("sent_reward: %s" % opt.sent_reward)
     metrics = {}
     metrics["xent_loss"] = lib.Loss.weighted_xent_loss
     metrics["critic_loss"] = lib.Loss.weighted_mse
-    # metrics["sent_reward"] = lib.Reward.sentence_bleu
-    # metrics["corp_reward"] = lib.Reward.corpus_bleu
     if opt.sent_reward == "bleu":
-        metrics["sent_reward"] = lib.Reward.warpped_sentence_bleu
+        metrics["sent_reward"] = {"train": lib.Reward.warpped_sentence_bleu,
+                                  "eval": lib.Reward.warpped_sentence_bleu}
     else:
-        metrics["sent_reward"] = lib.RetReward.retrieval_mrr_valid
-
-    # metrics_xe = {}
-    # metrics_xe["xent_loss"] = lib.Loss.weighted_xent_loss
-    # metrics_xe["critic_loss"] = lib.Loss.weighted_mse
-    # metrics_xe["sent_reward"] = lib.Reward.sentence_bleu
+        metrics["sent_reward"] = {"train": lib.RetReward.retrieval_mrr_train,
+                                  "eval": lib.RetReward.retrieval_mrr_eval}
 
     # if opt.pert_func is not None:
     #     opt.pert_func = lib.PertFunction(opt.pert_func, opt.pert_param)
@@ -327,65 +435,126 @@ def main():
     print("opt.eval: ", opt.eval)
     print("opt.eval_sample: ", opt.eval_sample)
     print("opt.eval_codenn: ", opt.eval_codenn)
+    print("opt.eval_codenn_all: ", opt.eval_codenn_all)
     print("opt.empty_anno: ", opt.empty_anno)
+    print("opt.collect_anno: ", opt.collect_anno)
 
-    # Evaluate model on heldout dataset.
+    # Evaluate model
     if opt.eval:
-        if opt.sent_reward == "bleu":
-            metrics["sent_reward"] = lib.Reward.warpped_sentence_bleu
-        else:
-            metrics["sent_reward"] = lib.RetReward.retrieval_mrr_valid
-        evaluator = lib.Evaluator(model, metrics, dicts, opt)
-        # On validation set.
-        if opt.var_length:
-            pred_file = opt.load_from.replace(".pt", ".valid.pred.var"+opt.var_type)
-        else:
-            pred_file = opt.load_from.replace(".pt", ".valid.pred")
-        if opt.eval_codenn:
-            pred_file = pred_file.replace("valid", "DEV")
-        print("valid_data.src: ", len(valid_data.src))
-        if opt.empty_anno:
-            pred_file += ".emptyAnno"
-        evaluator.eval(valid_data, pred_file)
+        if False:
+            # On training set.
+            if opt.sent_reward in ["cr", "cr_diff", "cr_noqb"]:
+                metrics["sent_reward"]["eval"] = lib.RetReward.retrieval_mrr_train
+                if opt.sent_reward in ["cr", "cr_diff"]:
+                    lib.RetReward.replace_all_train = opt.cr_replace_all_eval
+                    if lib.RetReward.replace_all_train:
+                        lib.RetReward.cal_mode_train = "batch"
+                    lib.RetReward.qt_candidates_train = opt.cr_qt_candidates_eval
+                    print("WARNING: switch replace_all_train from %d to %d, cal_mode %s, qt_candidates %d.\n" % (
+                        opt.cr_replace_all_train, opt.cr_replace_all_eval, lib.RetReward.cal_mode_train,
+                        lib.RetReward.qt_candidates_train
+                    ))
 
-        # On test set.
-        if opt.sent_reward == "bleu":
-            metrics["sent_reward"] = lib.Reward.warpped_sentence_bleu
-        else:
-            metrics["sent_reward"] = lib.RetReward.retrieval_mrr_test
-        evaluator = lib.Evaluator(model, metrics, dicts, opt)
-        if opt.var_length:
-            pred_file = opt.load_from.replace(".pt", ".test.pred.var"+opt.var_type)
-        else:
-            pred_file = opt.load_from.replace(".pt", ".test.pred")
-        if opt.eval_codenn:
-            pred_file = pred_file.replace("test", "EVAL")
-        print("test_data.src: ", len(test_data.src))
-        if opt.empty_anno:
-            pred_file += ".emptyAnno"
-        evaluator.eval(test_data, pred_file)
-    elif opt.eval_one:
-        if opt.sent_reward == "bleu":
-            metrics["sent_reward"] = lib.Reward.warpped_sentence_bleu
-        else:
-            metrics["sent_reward"] = lib.RetReward.retrieval_mrr_test
-        print("eval_one..")
-        evaluator = lib.Evaluator(model, metrics, dicts, opt)
-        # On test set.
-        pred_file = opt.load_from.replace(".pt", ".test_one.pred")
-        if opt.empty_anno:
-            pred_file += ".emptyAnno"
-        evaluator.eval(vis_data, pred_file)
-    elif opt.eval_sample:
-        if opt.sent_reward == "bleu":
-            metrics["sent_reward"] = lib.Reward.warpped_sentence_bleu
-        else:
-            metrics["sent_reward"] = lib.RetReward.retrieval_mrr_test
-        opt.no_update = True
-        critic, critic_optim = create_critic(checkpoint, dicts, opt)
-        reinforce_trainer = lib.ReinforceTrainer(model, critic, rl_data, test_data,
-                                                 metrics, dicts, optim, critic_optim, opt)
-        reinforce_trainer.train(opt.start_epoch, opt.start_epoch, False)
+            if opt.collect_anno:
+                metrics["sent_reward"] = {"train": None, "eval": None}
+
+            evaluator = lib.Evaluator(model, metrics, dicts, opt)
+            if opt.var_length:
+                pred_file = opt.load_from.replace(".pt", ".train.pred.var"+opt.var_type)
+            else:
+                pred_file = opt.load_from.replace(".pt", ".train.pred")
+            if opt.eval_codenn or opt.eval_codenn_all:
+                raise Exception("Invalid eval_codenn!")
+            print("train_data.src: ", len(supervised_data.src))
+            if opt.empty_anno:
+                pred_file += ".emptyAnno"
+            # elif opt.collect_anno:
+            #     pred_file += ".pkl"
+            if opt.cr_setup != "default":
+                pred_file += ".cr%s" % opt.cr_setup
+            if opt.predict_mask:
+                pred_file += ".masked"
+            pred_file += "_metric%s" % opt.sent_reward
+            evaluator.eval(supervised_data, pred_file)
+
+        if True:
+            # On validation set.
+            if opt.sent_reward in ["cr", "cr_diff", "cr_noqb"]:
+                metrics["sent_reward"]["eval"] = lib.RetReward.retrieval_mrr_eval
+            if opt.collect_anno:
+                metrics["sent_reward"] = {"train": None, "eval": None}
+
+            evaluator = lib.Evaluator(model, metrics, dicts, opt)
+            if opt.var_length:
+                pred_file = opt.load_from.replace(".pt", ".valid.pred.var"+opt.var_type)
+            else:
+                pred_file = opt.load_from.replace(".pt", ".valid.pred")
+            if opt.eval_codenn:
+                pred_file = pred_file.replace("valid", "DEV")
+                valid_data = DEV
+            elif opt.eval_codenn_all:
+                pred_file = pred_file.replace("valid", "DEV_all")
+                print("* Please input valid data = DEV_all")
+            print("valid_data.src: ", len(valid_data.src))
+            if opt.empty_anno:
+                pred_file += ".emptyAnno"
+            # elif opt.collect_anno:
+            #     pred_file += ".pkl"
+            if opt.cr_setup != "default":
+                pred_file += ".cr%s" % opt.cr_setup
+            if opt.predict_mask:
+                pred_file += ".masked"
+            pred_file += ".metric%s" % opt.sent_reward
+            evaluator.eval(valid_data, pred_file)
+
+        if True:
+            # On test set.
+            if opt.sent_reward in ["cr", "cr_diff", "cr_noqb"]:
+                metrics["sent_reward"]["eval"] = lib.RetReward.retrieval_mrr_eval
+            if opt.collect_anno:
+                metrics["sent_reward"] = {"train": None, "eval": None}
+
+            evaluator = lib.Evaluator(model, metrics, dicts, opt)
+            if opt.var_length:
+                pred_file = opt.load_from.replace(".pt", ".test.pred.var"+opt.var_type)
+            else:
+                pred_file = opt.load_from.replace(".pt", ".test.pred")
+            if opt.eval_codenn:
+                pred_file = pred_file.replace("test", "EVAL")
+                test_data = EVAL
+            elif opt.eval_codenn_all:
+                pred_file = pred_file.replace("test", "EVAL_all")
+                print("* Please input test data = EVAL_all")
+            print("test_data.src: ", len(test_data.src))
+            if opt.empty_anno:
+                pred_file += ".emptyAnno"
+            # elif opt.collect_anno:
+            #     pred_file += ".pkl"
+            if opt.cr_setup != "default":
+                pred_file += ".cr%s" % opt.cr_setup
+            if opt.predict_mask:
+                pred_file += ".masked"
+            pred_file += ".metric%s" % opt.sent_reward
+            evaluator.eval(test_data, pred_file)
+    # elif opt.eval_one:
+    #     assert opt.collect_anno
+    #     if opt.sent_reward in ["cr", "cr_diff", "cr_noqb"]:
+    #         metrics["sent_reward"]["eval"] = lib.RetReward.retrieval_mrr_eval_one
+    #
+    #     print("eval_one..")
+    #     evaluator = lib.Evaluator(model, metrics, dicts, opt)
+    #     # On test set.
+    #     pred_file = opt.load_from.replace(".pt", ".test_one.pred")
+    #
+    #     evaluator.eval(vis_data, pred_file)
+    # elif opt.eval_sample:
+    #     if opt.sent_reward in ["cr", "cr_diff", "cr_noqb"]:
+    #         metrics["sent_reward"]["eval"] = lib.RetReward.retrieval_mrr_eval
+    #     opt.no_update = True
+    #     critic, critic_optim = create_critic(checkpoint, dicts, opt)
+    #     reinforce_trainer = lib.ReinforceTrainer(model, critic, rl_data, test_data,
+    #                                              metrics, dicts, optim, critic_optim, opt)
+    #     reinforce_trainer.train(opt.start_epoch, opt.start_epoch, False)
 
     else:
         print("supervised_data.src: ", len(supervised_data.src))
@@ -393,7 +562,7 @@ def main():
         if opt.data_type in {"code", "hybrid"}:
             print("supervised_data.trees: ", len(supervised_data.trees))
             print("supervised_data.leafs: ", len(supervised_data.leafs))
-        xent_trainer = lib.Trainer(model, supervised_data, valid_data, metrics, dicts, optim, opt)
+        xent_trainer = lib.Trainer(model, supervised_data, valid_data, metrics, dicts, optim, opt, DEV=DEV)
 
         if use_critic:
             start_time = time.time()
@@ -403,13 +572,22 @@ def main():
 
             xent_trainer.train(opt.start_epoch, opt.start_reinforce - 1, start_time)
 
+            if opt.sent_reward == "bleu":
+                _valid_data = DEV
+            else:
+                _valid_data = valid_data
+
             if opt.has_baseline:
                 # Create critic here to not affect random seed.
                 critic, critic_optim = create_critic(checkpoint, dicts, opt)
+                print("Building critic...")
+                print("Critic: ", critic)
+                print("Critic optim: ", critic_optim)
+
                 # Pretrain critic.
                 print("pretrain critic...")
                 if opt.critic_pretrain_epochs > 0:
-                    reinforce_trainer = lib.ReinforceTrainer(model, critic, supervised_data, valid_data, metrics, dicts, optim, critic_optim, opt)
+                    reinforce_trainer = lib.ReinforceTrainer(model, critic, supervised_data, _valid_data, metrics, dicts, optim, critic_optim, opt)
                     reinforce_trainer.train(opt.start_reinforce, opt.start_reinforce + opt.critic_pretrain_epochs - 1, True, start_time)
             else:
                 print("NOTE: do not have a baseline model")
@@ -417,7 +595,7 @@ def main():
 
             # Reinforce training.
             print("reinforce training...")
-            reinforce_trainer = lib.ReinforceTrainer(model, critic, rl_data, valid_data, metrics, dicts, optim, critic_optim, opt)
+            reinforce_trainer = lib.ReinforceTrainer(model, critic, rl_data, _valid_data, metrics, dicts, optim, critic_optim, opt)
             reinforce_trainer.train(opt.start_reinforce + opt.critic_pretrain_epochs, opt.end_epoch, False, start_time)
 
         else: # Supervised training only. Set opt.start_reinforce to None

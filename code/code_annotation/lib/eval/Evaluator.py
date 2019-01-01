@@ -1,16 +1,18 @@
 from __future__ import division
 import lib
-import sys
 import torch
 import pdb
 import time
+import pickle
 
 
 class Evaluator(object):
     def __init__(self, model, metrics, dicts, opt):
         self.model = model
         self.loss_func = metrics["xent_loss"]
-        self.sent_reward_func = metrics.get("sent_reward", None)
+        self.sent_reward_func = None
+        if "sent_reward" in metrics:
+            self.sent_reward_func = metrics["sent_reward"]["eval"]
         self.corpus_reward_func = metrics.get("corp_reward", None)
         self.dicts = dicts
         self.max_length = opt.max_predict_length
@@ -29,7 +31,9 @@ class Evaluator(object):
             all_targets = []
             all_srcs = []
             all_qts = []
+            all_indices = []
             all_rewards = []
+
             for i in range(len(data)): #
                 batch = data[i]
 
@@ -48,7 +52,8 @@ class Evaluator(object):
                 else:
                     raise Exception("Invalid data_type %s" % self.opt.data_type)
 
-                qts = batch[-1]
+                qts = batch[4]
+                indices = batch[5]
 
                 if self.opt.has_attn:
                     if self.opt.data_type == 'code' or self.opt.data_type == 'text':
@@ -72,9 +77,11 @@ class Evaluator(object):
                 targets = targets.data.t().tolist()
                 qts = [item.tolist() if item is not None else None for item in qts]
 
-                if self.sent_reward_func is not None:
-                    # s0 = time.time()
-                    rewards, _ = self.sent_reward_func(srcs, preds, qts, targets)
+                if not self.opt.collect_anno and self.sent_reward_func is not None:
+                    s0 = time.time()
+                    rewards, _ = self.sent_reward_func(preds, targets,
+                                                       codes=srcs, qts=qts,
+                                                       bool_empty_qb=self.opt.empty_anno)
                     # print("Eval one batch time: %.2f" % (time.time() - s0))
                 else:
                     rewards = [0.0] * len(preds)
@@ -83,6 +90,7 @@ class Evaluator(object):
                 all_targets.extend(targets)
                 all_srcs.extend(srcs)
                 all_qts.extend(qts)
+                all_indices.extend(indices)
                 all_rewards.extend(rewards)
 
                 total_loss += loss
@@ -103,19 +111,27 @@ class Evaluator(object):
             else:
                 corpus_reward = 0.0
 
+            if self.opt.collect_anno:
+                assert pred_file is not None
+                print("Save annotations to %s (size %d)..." % (pred_file+".pkl", len(all_preds)))
+                pickle.dump((all_srcs, all_targets, all_qts, all_indices, all_preds),
+                            open(pred_file+".pkl", "wb"))
+
             if pred_file is not None:
-                self._convert_and_report(data, pred_file, all_preds, all_targets, all_srcs, all_qts, all_rewards,
+                self._convert_and_report(data, pred_file, all_preds, all_targets, all_srcs,
+                                         all_qts, all_indices, all_rewards,
                                          (loss, sent_reward, corpus_reward))
 
             return loss, sent_reward, corpus_reward
 
-    def _convert_and_report(self, data, pred_file, preds, targets, srcs, qts, rewards, metrics):
+    def _convert_and_report(self, data, pred_file, preds, targets, srcs, qts, indices, rewards, metrics):
         with open(pred_file, "w") as f:
             for i in range(len(preds)):
                 pred = preds[i]
                 target = targets[i]
                 src = srcs[i]
                 qt = qts[i]
+                idx = indices[i]
                 rw = rewards[i]
 
                 src = lib.Reward.clean_up_sentence(src, remove_unk=False, remove_eos=True)
@@ -127,6 +143,7 @@ class Evaluator(object):
                 tgt = [self.dicts["tgt"].getLabel(w) for w in target]
                 qt = [self.dicts["qt"].getLabel(w) for w in qt] if qt is not None else qt
 
+                f.write(str(i) + ": idx: " + str(idx) + '\n')
                 f.write(str(i) + ": src: "+ " ".join(src).encode('utf-8', 'ignore') + '\n')
                 f.write(str(i) + ": pre: " + " ".join(pred).encode('utf-8', 'ignore') + '\n')
                 f.write(str(i) + ": tgt: "+ " ".join(tgt).encode('utf-8', 'ignore') + '\n')

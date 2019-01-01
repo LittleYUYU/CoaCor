@@ -14,17 +14,24 @@ class Dataset(object):
         self.src = data["src"]
         self.tgt = data["tgt"]
         self.qt = data["qt"]
-        self.data_type = data_type
-        # if self.data_type in {"code", "hybrid"}:
+        self.idx = data["indices"]
         self.trees = data["trees"]
         self.leafs = data["leafs"]
         assert(len(self.src) == len(self.tgt))
         self.cuda = cuda
 
+        self.data_type = data_type
+
         self.batchSize = batchSize
         # self.numBatches = int(math.ceil(len(self.src)/batchSize)-1)
         self.numBatches = int(math.ceil(len(self.src) * 1.0 / batchSize))
         self.eval = eval
+
+
+    def shuffle(self):
+        data = list(zip(self.src, self.tgt, self.qt, self.idx, self.trees, self.leafs))
+        random.shuffle(data)
+        self.src, self.tgt, self.qt, self.idx, self.trees, self.leafs = zip(*data)
 
     def _batchify(self, data, align_right=False, include_lengths=False):
         lengths = [x.size(0) for x in data]
@@ -45,6 +52,7 @@ class Dataset(object):
         srcBatch, src_lengths = self._batchify(self.src[index*self.batchSize:(index + 1)*self.batchSize], include_lengths=True)
         tgtBatch = self._batchify(self.tgt[index * self.batchSize:(index + 1) * self.batchSize])
         qtBatch = self.qt[index * self.batchSize:(index + 1) * self.batchSize]
+        idxBatch = self.idx[index * self.batchSize:(index + 1) * self.batchSize]
         indices = range(len(srcBatch))
 
         def wrap(b):
@@ -57,9 +65,9 @@ class Dataset(object):
         if self.data_type in {"code", "hybrid"}:
             leafBatch, leaf_lengths = self._batchify(self.leafs[index * self.batchSize:(index + 1) * self.batchSize], include_lengths=True)
             srcTrees = self.trees[index * self.batchSize:(index + 1) * self.batchSize]
-            src_batch = zip(indices, srcBatch, leafBatch, leaf_lengths, srcTrees, tgtBatch, qtBatch)
+            src_batch = zip(indices, srcBatch, leafBatch, leaf_lengths, srcTrees, tgtBatch, qtBatch, idxBatch)
             src_batch, src_lengths = zip(*sorted(zip(src_batch, src_lengths), key=lambda x: -x[1]))
-            indices, srcBatch, leafBatch, leaf_lengths, srcTrees, tgtBatch, qtBatch = zip(*src_batch)
+            indices, srcBatch, leafBatch, leaf_lengths, srcTrees, tgtBatch, qtBatch, idxBatch = zip(*src_batch)
 
             tree_lengths = []
             for tree in srcTrees:
@@ -70,26 +78,22 @@ class Dataset(object):
                    (srcTrees, tree_lengths, (wrap(leafBatch), list(leaf_lengths))), \
                    wrap(tgtBatch), \
                    indices, \
-                   qtBatch
+                   qtBatch, idxBatch
 
         else:
-            src_batch = zip(indices, srcBatch, tgtBatch, qtBatch)
+            src_batch = zip(indices, srcBatch, tgtBatch, qtBatch, idxBatch)
             src_batch, src_lengths = zip(*sorted(zip(src_batch, src_lengths), key=lambda x: -x[1]))
-            indices, srcBatch, tgtBatch, qtBatch = zip(*src_batch)
+            indices, srcBatch, tgtBatch, qtBatch, idxBatch = zip(*src_batch)
 
             return (wrap(srcBatch), list(src_lengths)), \
                     None, \
                     wrap(tgtBatch), \
                     indices, \
-                    qtBatch
+                    qtBatch, idxBatch
 
     def __len__(self):
         return self.numBatches
 
-    def shuffle(self):
-        data = list(zip(self.src, self.tgt, self.trees, self.leafs))
-        random.shuffle(data)
-        self.src, self.tgt, self.trees, self.leafs = zip(*data)
 
     # def restore_pos(self, sents):
     #     sorted_sents = [None] * len(self.pos)

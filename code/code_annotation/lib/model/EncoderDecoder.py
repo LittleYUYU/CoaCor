@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 from torch.nn.utils.rnn import pad_packed_sequence as unpack
 from torch.nn.utils.rnn import pack_padded_sequence as pack
-import gensim
+# import gensim
 import numpy as np
 import lib
 import sys
@@ -802,10 +802,28 @@ class Seq2SeqModel(nn.Module):
         batch_size = targets.size(1)
         num_eos = targets[0].data.byte().new(batch_size).zero_()
 
+        if self.opt.predict_mask:
+            block_src = torch.tensor([-np.inf] * batch_size).view(-1, 1)
+            block_mask = torch.zeros(batch_size, self.decoder.word_lut.num_embeddings, dtype=torch.float32)
+            if self.opt.cuda:
+                block_src = block_src.cuda()
+                block_mask = block_mask.cuda()
+            block_mask[:, lib.Constants.UNK] = -np.inf
+
         for i in range(max_length):
             output, hidden = self.decoder.step(emb, output, hidden, context)
             logit = self.generator(output)
-            pred = logit.max(1)[1].view(-1).data
+
+            if self.opt.predict_mask: # block repetitive words (except BOS, EOS) and UNK
+                logit += block_mask
+                pred = logit.max(1)[1].view(-1).data
+                # update mask
+                block_mask.scatter_(1, pred.view(-1, 1), block_src)
+                block_mask[:, lib.Constants.BOS] = 0.0
+                block_mask[:, lib.Constants.EOS] = 0.0
+            else:
+                pred = logit.max(1)[1].view(-1).data
+
             preds.append(pred)
 
             num_eos |= (pred == lib.Constants.EOS)
@@ -829,8 +847,11 @@ class Seq2SeqModel(nn.Module):
         for i in range(max_length):
             output, hidden = self.decoder.step(emb, output, hidden, context)
             outputs.append(output)
-            dist = F.softmax(self.generator(output), dim=-1)
+            logit = self.generator(output)
+
+            dist = F.softmax(logit, dim=-1)
             sample = dist.multinomial(1, replacement=False).view(-1).data
+
             samples.append(sample)
 
             # Stop if all sentences reach EOS.

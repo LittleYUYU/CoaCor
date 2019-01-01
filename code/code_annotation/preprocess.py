@@ -40,10 +40,10 @@ def get_opt():
 
 def makeVocabulary(name, tokenized_data, size=0, min_freq=1):
     "Construct the word and feature vocabs."
-    print(Constants.PAD_WORD, Constants.UNK_WORD, Constants.BOS_WORD, Constants.EOS_WORD)
+    print(Constants.PAD_WORD, Constants.BOS_WORD, Constants.EOS_WORD, Constants.UNK_WORD)
     print("Build vocabulary for %s ..." % name)
 
-    vocab = lib.Dict([Constants.PAD_WORD, Constants.UNK_WORD, Constants.BOS_WORD, Constants.EOS_WORD])
+    vocab = lib.Dict([Constants.PAD_WORD, Constants.BOS_WORD, Constants.EOS_WORD, Constants.UNK_WORD])
     for sent in tokenized_data:
         for token in sent:
             vocab.add(token)
@@ -80,11 +80,12 @@ def saveVocabulary(name, vocab, file):
     vocab.writeFile(file)
 
 
-def makeData(token_src, token_tgt, token_qt, srcDicts, tgtDicts, qtDicts, bool_ignore=True):
-    src_ids, tgt_ids, qt_ids, trees = [], [], [], []
+def makeData(token_src, token_tgt, token_qt, indices, srcDicts, tgtDicts, qtDicts, bool_ignore=True):
+
+    src_ids, tgt_ids, qt_ids, trees, pos_indices = [], [], [], [], []
     ignored, exceps, empty = 0, 0, 0
 
-    for sent_src, sent_tgt, sent_qt in zip(token_src, token_tgt, token_qt):
+    for sent_src, sent_tgt, sent_qt, sent_idx in zip(token_src, token_tgt, token_qt, indices):
         if len(sent_src) == 0 or len(sent_tgt) == 0 or len(sent_qt) == 0:
             empty += 1
             continue
@@ -94,6 +95,7 @@ def makeData(token_src, token_tgt, token_qt, srcDicts, tgtDicts, qtDicts, bool_i
             tgt_ids += [tgtDicts.convertToIdx(sent_tgt, Constants.UNK_WORD, eosWord=Constants.EOS_WORD)]
             qt_ids += [qtDicts.convertToIdx(sent_qt, Constants.UNK_WORD)]
             trees += []
+            pos_indices += [sent_idx]
         else:
             if bool_ignore:
                 ignored += 1
@@ -101,21 +103,24 @@ def makeData(token_src, token_tgt, token_qt, srcDicts, tgtDicts, qtDicts, bool_i
                 src_ids += [srcDicts.convertToIdx(sent_src[:opt.src_seq_length], Constants.UNK_WORD)]
                 tgt_ids += [tgtDicts.convertToIdx(sent_tgt[:opt.tgt_seq_length], Constants.UNK_WORD, eosWord=Constants.EOS_WORD)]
                 qt_ids += [qtDicts.convertToIdx(sent_qt, Constants.UNK_WORD)]
+                trees += []
+                pos_indices += [sent_idx]
 
     print(('Prepared %d sentences ' +
            '(%d ignored due to src len > %d or tgt len > %d)' +
            '(%d ignored due to empty.)') %
           (len(src_ids), ignored, opt.src_seq_length, opt.tgt_seq_length, empty))
     # print(('Prepared %d sentences ' + '(%d ignored due to Exception)') % (len(src_ids), exceps))
-    return src_ids, tgt_ids, qt_ids, trees
+    return src_ids, tgt_ids, qt_ids, trees, pos_indices
 
 
-def makeDataGeneral(name, token_src, token_tgt, token_qt, dicts, bool_ignore=True):
+def makeDataGeneral(name, token_src, token_tgt, token_qt, indices, dicts, bool_ignore=True):
     print('Preparing ' + name + '...')
     res = {}
-    res['src'], res['tgt'], res['qt'], res['trees'] = makeData(token_src, token_tgt, token_qt,
-                                                               dicts['src'], dicts['tgt'], dicts['qt'],
-                                                               bool_ignore=bool_ignore)
+    res['src'], res['tgt'], res['qt'], res['trees'], res['indices'] = \
+        makeData(token_src, token_tgt, token_qt, indices,
+                 dicts['src'], dicts['tgt'], dicts['qt'],
+                 bool_ignore=bool_ignore)
     return res
 
 
@@ -127,6 +132,9 @@ def main():
     idx2tokenized_tgt = pickle.load(open(opt.token_qb)) #tgt=qb
     idx2tokenized_qt = pickle.load(open(opt.token_qt))
     split_indices = pickle.load(open(opt.split_indices)) # a dict of {train/valid/test: iids}
+    split_indices["valid"] = split_indices["valid"][:(len(split_indices["valid"]) // 50 * 50)]
+    split_indices["test"] = split_indices["test"][:(len(split_indices["test"]) // 50 * 50)] #poolsize = 50
+
     print("Data loaded!")
 
     if opt.code_word2id is not None:
@@ -142,15 +150,17 @@ def main():
     train_src, train_tgt, train_qt, \
     valid_src, valid_tgt, valid_qt,\
     test_src, test_tgt, test_qt = [], [], [], [], [], [], [], [], []
-    for item, (container_src, container_tgt, container_qt) in zip(["train", "valid", "test"],
-                                                    [(train_src, train_tgt, train_qt),
-                                                     (valid_src, valid_tgt, valid_qt),
-                                                     (test_src, test_tgt, test_qt)]):
+    train_indices, valid_indices, test_indices = [], [], []
+    for item, (container_src, container_tgt, container_qt, container_indices) in zip(["train", "valid", "test"],
+                                                    [(train_src, train_tgt, train_qt, train_indices),
+                                                     (valid_src, valid_tgt, valid_qt, valid_indices),
+                                                     (test_src, test_tgt, test_qt, test_indices)]):
         iids = split_indices[item]
         for qt_idx, qb_idx, code_idx in iids:
             container_src.append(idx2tokenized_src[code_idx])
             container_tgt.append(idx2tokenized_tgt[qb_idx])
             container_qt.append(idx2tokenized_qt[qt_idx])
+            container_indices.append((qt_idx, qb_idx, code_idx))
 
     print("train, valid, test size: %d, %d, %d" % (
         len(split_indices["train"]), len(split_indices["valid"]), len(split_indices["test"])))
@@ -168,9 +178,9 @@ def main():
         ))
         src_lengths.sort()
         tgt_lengths.sort()
-        src_seq_length = src_lengths[int(len(src_lengths) * 0.95)]
-        tgt_seq_length = tgt_lengths[int(len(tgt_lengths) * 0.95)]
-        print("%s data: length size to cover 95 precent examples, src %d, tgt %d" % (
+        src_seq_length = src_lengths[int(len(src_lengths) * 0.90)]
+        tgt_seq_length = tgt_lengths[int(len(tgt_lengths) * 0.90)]
+        print("%s data: length size to cover 90 precent examples, src %d, tgt %d" % (
             item, src_seq_length, tgt_seq_length
         ))
         src_seq_lengths.append(src_seq_length)
@@ -199,34 +209,31 @@ def main():
 
     save_data = {}
     save_data['dicts'] = dicts
-    save_data['train'] = makeDataGeneral('train', train_src, train_tgt, train_qt, dicts, bool_ignore=False)
-    save_data['valid'] = makeDataGeneral('valid', valid_src, valid_tgt, valid_qt, dicts, bool_ignore=False)
+    save_data['train'] = makeDataGeneral('train', train_src, train_tgt, train_qt, train_indices, dicts, bool_ignore=False)
+    save_data['valid'] = makeDataGeneral('valid', valid_src, valid_tgt, valid_qt, valid_indices, dicts, bool_ignore=False)
     # valid_pg = random.sample(zip(valid_src, valid_tgt, valid_qt), 2000)
     # valid_src_pg, valid_tgt_pg, valid_qt_pg = zip(*valid_pg)
     # save_data['valid_pg'] = makeDataGeneral('valid_pg', list(valid_src_pg), list(valid_tgt_pg), list(valid_qt_pg), dicts)
-    save_data['test'] = makeDataGeneral('test', test_src, test_tgt, test_qt, dicts, bool_ignore=False)
+    save_data['test'] = makeDataGeneral('test', test_src, test_tgt, test_qt, test_indices, dicts, bool_ignore=False)
 
     print("Saving data to \"" + opt.save_data + ".train.pt\"...")
     torch.save(save_data, opt.save_data + ".train.pt")
 
-    # toy data for quick test
-    toy_data = {}
-    toy_data['dicts'] = save_data['dicts']
-    for item in ["train", "valid", "test"]:
-        toy_data[item] = {}
-        for k,v in save_data[item].items():
-            toy_data[item][k] = v[:1000]
-    print("Saving toy data to \"" + opt.save_data + ".train_toy.pt\"...")
-    torch.save(toy_data, opt.save_data + ".train_toy.pt")
+    # # toy data for quick test
+    # toy_data = {}
+    # toy_data['dicts'] = save_data['dicts']
+    # for item in ["train", "valid", "test"]:
+    #     toy_data[item] = {}
+    #     for k,v in save_data[item].items():
+    #         toy_data[item][k] = v[:1000]
+    # print("Saving toy data to \"" + opt.save_data + ".train_toy.pt\"...")
+    # torch.save(toy_data, opt.save_data + ".train_toy.pt")
 
-    # # word2vec dump
-    # code_sentences = [token for sent in train_src for token in sent]
-    # print('code_sentences: ', train_xe_code_sentences[0])
-    # print('comment_sentences: ', train_xe_comment_sentences[0])
-    # code_w2v_model = gensim.models.Word2Vec(train_xe_code_sentences, size=512, window=5, min_count=5, workers=16)
-    # code_w2v_model.save(opt.save_data + '.train_xe.code.gz')
-    # comment_w2v_model = gensim.models.Word2Vec(train_xe_comment_sentences, size=512, window=5, min_count=5, workers=16)
-    # comment_w2v_model.save(opt.save_data + '.train_xe.comment.gz')
+    # word2vec dump
+    code_w2v_model = gensim.models.Word2Vec(train_src, size=512, window=5, min_count=2, workers=16)
+    code_w2v_model.save(opt.save_data + '.train_xe.src.gz')
+    comment_w2v_model = gensim.models.Word2Vec(train_tgt, size=512, window=5, min_count=2, workers=16)
+    comment_w2v_model.save(opt.save_data + '.train_xe.tgt.gz')
 
 
 if __name__ == "__main__":
