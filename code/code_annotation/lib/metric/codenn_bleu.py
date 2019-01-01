@@ -239,5 +239,5 @@ if __name__ == '__main__':
   print sum(bleu_sentLevel) * 1.0 / len(bleu_sentLevel)
 
   (goldMap, predictionMap) = computeMapsFromPairList(predictions, golds)
-  print bleu_sentLevel.append(bleuFromMaps(goldMap, predictionMap)[0])
+  print bleuFromMaps(goldMap, predictionMap)[0]
 
