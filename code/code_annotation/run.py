@@ -46,7 +46,7 @@ def train_a2c(lang, bool_toy, bool_has_baseline, qb_or_qt, max_predict_length, p
               '-save_dir dataset/result_%s_%s/ -max_predict_length %s -predict_mask %s ' \
               '-end_epoch %s ' \
               '-critic_pretrain_epochs %s ' \
-              '-data_type text -sent_reward %s -cr_setup %s -cr_replace_all_train %s -cr_replace_all_eval %s ' \
+              '-sent_reward %s -cr_setup %s -cr_replace_all_train %s -cr_replace_all_eval %s ' \
               '-cr_qt_candidates_train %s -cr_qt_candidates_eval %s ' \
               '-has_attn %s -has_baseline %s -start_decay_at %s -word_vec_size %s -rnn_size %s ' \
               '-dropout %s -batch_size %s -layers %s ' \
@@ -149,7 +149,6 @@ def test_a2c(lang, bool_toy, qb_or_qt, max_predict_length, pred_mask, sent_rewar
     arg_str = '-lang %s -load_from %s -sent_reward %s -cr_setup %s ' \
               '-max_predict_length %s -predict_mask %s ' \
               '-eval -save_dir . -cr_replace_all_eval %s -cr_qt_candidates_eval %s ' \
-              '-data_type text ' \
               '-has_attn %s ' \
               '-gpus 0 -show_str None -layers %s ' \
               % (lang, load_from_path, sent_reward, cr_setup, max_predict_length, pred_mask,
@@ -179,7 +178,7 @@ def test_a2c(lang, bool_toy, qb_or_qt, max_predict_length, pred_mask, sent_rewar
         log_str += "_rQtCandEval"
     if pred_mask == '1':
         log_str += "_predMask"
-    #arg_str += log_str
+    arg_str += log_str
 
     run = 'python a2c-train.py %s' % arg_str
 
