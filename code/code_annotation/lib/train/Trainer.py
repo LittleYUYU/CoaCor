@@ -88,22 +88,11 @@ class Trainer(object):
         for i in range(len(self.train_data)): #
             batch = self.train_data[i] # batch_order[i]
             self.model.zero_grad()
-            if self.opt.data_type == 'code':
-                targets = batch[2]
-                attention_mask = batch[1][2][0].data.eq(lib.Constants.PAD).t()
-            elif self.opt.data_type == 'text':
-                targets = batch[2]
-                attention_mask = batch[0][0].data.eq(lib.Constants.PAD).t()
-            elif self.opt.data_type == 'hybrid':
-                targets = batch[2]
-                attention_mask_code = batch[1][2][0].data.eq(lib.Constants.PAD).t()
-                attention_mask_txt = batch[0][0].data.eq(lib.Constants.PAD).t()
+            targets = batch[2]
+            attention_mask = batch[0][0].data.eq(lib.Constants.PAD).t()
 
             if self.opt.has_attn:
-                if self.opt.data_type == 'code' or self.opt.data_type == 'text':
-                   self.model.decoder.attn.applyMask(attention_mask)
-                elif self.opt.data_type == 'hybrid':
-                    self.model.decoder.attn.applyMask(attention_mask_code, attention_mask_txt)
+                self.model.decoder.attn.applyMask(attention_mask)
 
             outputs = self.model(batch, eval=False)
 

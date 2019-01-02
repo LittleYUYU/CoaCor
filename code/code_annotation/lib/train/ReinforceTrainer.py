@@ -59,11 +59,8 @@ class ReinforceTrainer(object):
 
             if pretrain_critic:
                 print("Pretrain critic...")
-            no_update = self.opt.no_update and (not pretrain_critic) and (epoch == start_epoch)
 
-            if no_update: print("No update...")
-
-            train_reward, critic_loss = self.train_epoch(epoch, pretrain_critic, no_update)
+            train_reward, critic_loss = self.train_epoch(epoch, pretrain_critic, False)
             print("Train sentence reward: %.2f" % (train_reward * 100))
             print("Critic loss: %g" % critic_loss)
 
@@ -77,8 +74,6 @@ class ReinforceTrainer(object):
 
             # else:
             #     print("Pretraining critic...no eval on actor...")
-
-            if no_update: break
 
             if not pretrain_critic:
                 self.optim.updateLearningRate(-valid_sent_reward, epoch)
@@ -125,19 +120,9 @@ class ReinforceTrainer(object):
 
         for i in range(len(self.train_data)):
             batch = self.train_data[i]
-            if self.opt.data_type == 'code':
-                targets = batch[2]
-                attention_mask = batch[1][2][0].data.eq(lib.Constants.PAD).t()
-            elif self.opt.data_type == 'text':
-                targets = batch[2]
-                attention_mask = batch[0][0].data.eq(lib.Constants.PAD).t()
-            elif self.opt.data_type == 'hybrid':
-                targets = batch[2]
-                attention_mask_code = batch[1][2][0].data.eq(lib.Constants.PAD).t()
-                attention_mask_txt = batch[0][0].data.eq(lib.Constants.PAD).t()
-
+            targets = batch[2]
             qts = batch[4]
-
+            attention_mask = batch[0][0].data.eq(lib.Constants.PAD).t()
             batch_size = targets.size(1)
 
             self.actor.zero_grad()
@@ -146,10 +131,7 @@ class ReinforceTrainer(object):
 
             # Sample translations
             if self.opt.has_attn:
-                if self.opt.data_type == 'code' or self.opt.data_type == 'text':
-                    self.actor.decoder.attn.applyMask(attention_mask)
-                elif self.opt.data_type == 'hybrid':
-                    self.actor.decoder.attn.applyMask(attention_mask_code, attention_mask_txt)
+                self.actor.decoder.attn.applyMask(attention_mask)
             samples, outputs = self.actor.sample(batch, self.max_length)
 
             # Calculate rewards
@@ -157,13 +139,10 @@ class ReinforceTrainer(object):
             rewards, samples = self.sent_reward_func(
                 samples.t().tolist(), targets.data.t().tolist(),
                 codes=batch[0][0].t().tolist(),
-                qts=[item.tolist() for item in qts])
+                qts=[item.tolist() for item in qts],
+                tgt_dict=self.dicts['tgt'])
             reward = sum(rewards)
             # print("Eval one batch time: %.2f" % (time.time() - s0))
-
-            # # Perturb rewards (if specified).
-            # if self.pert_func is not None:
-            #     rewards = self.pert_func(rewards)
 
             samples = Variable(torch.LongTensor(samples).t().contiguous())
             rewards = Variable(torch.FloatTensor([rewards] * samples.size(0)).contiguous())
@@ -175,18 +154,11 @@ class ReinforceTrainer(object):
             num_words = critic_weights.data.sum()
             if self.opt.has_baseline:
                 # Update critic.
-                if not no_update:
-                    if self.opt.data_type == 'code':
-                        baselines = self.critic((batch[0], batch[1], samples, batch[3]), eval=False, regression=True)
-                    elif self.opt.data_type == 'text':
-                        baselines = self.critic((batch[0], batch[1], samples, batch[3]), eval=False, regression=True)
-                    elif self.opt.data_type == 'hybrid':
-                        baselines = self.critic((batch[0], batch[1], samples, batch[3]), eval=False, regression=True)
+                baselines = self.critic((batch[0], batch[1], samples, batch[3]), eval=False, regression=True)
 
-                    critic_loss = self.critic.backward(baselines, rewards, critic_weights, num_words, self.critic_loss_func, regression=True)
-                    self.critic_optim.step()
-                else:
-                    critic_loss = 0
+                critic_loss = self.critic.backward(baselines, rewards, critic_weights, num_words, self.critic_loss_func, regression=True)
+                self.critic_optim.step()
+
             else:
                 critic_loss = 0
 

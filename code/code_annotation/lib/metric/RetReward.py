@@ -70,7 +70,7 @@ def sentence_retrieval_mrr(data_name, code, annotation, qt, qb,
     mrr_list = cr.get_reward(data_name, code, annotation, qt, qb, idx=None,
                              reward_mode=reward_mode, number_of_runs=number_of_runs, bool_processed=True,
                              bool_empty_qb=bool_empty_qb)
-    # print("DEBUG MRRs", mrr_list)
+
     mrr = mrr_list[0] if reward_mode in ["cr", "cr_noqb"] else (mrr_list[0] - mrr_list[1])
 
     return mrr, cleaned_annotation
@@ -99,7 +99,7 @@ def batch_retrieval_mrr(codes, annotations, qts, qbs,
     return mrrs, cleaned_annotations
 
 
-def retrieval_mrr_train(annotations, qbs, codes, qts, bool_empty_qb=None):
+def retrieval_mrr_train(annotations, qbs, codes, qts, bool_empty_qb=None, **kwargs):
     if cal_mode_train == "sentence":
         assert not replace_all_train
         cleaned_annotations = []
@@ -120,7 +120,7 @@ def retrieval_mrr_train(annotations, qbs, codes, qts, bool_empty_qb=None):
     return mrrs, cleaned_annotations
 
 
-def retrieval_mrr_eval(annotations, qbs, codes, qts, bool_empty_qb):
+def retrieval_mrr_eval(annotations, qbs, codes, qts, bool_empty_qb, **kwargs):
     # no "sentence" cal_mode is supported
     mrrs, cleaned_annotations = batch_retrieval_mrr(codes, annotations, qts, qbs,
                                                     bool_empty_qb=bool_empty_qb,
@@ -129,17 +129,6 @@ def retrieval_mrr_eval(annotations, qbs, codes, qts, bool_empty_qb):
     return mrrs, cleaned_annotations
 
 
-# def retrieval_mrr_eval_one(annotations, qbs, codes, qts, bool_empty_qb):
-#     cleaned_annotations = []
-#     mrrs = []
-#
-#     for code, annotation, qt, qb in zip(codes, annotations, qts, qbs):
-#         mrr, cleaned_annotation = sentence_retrieval_mrr("test", code, annotation, qt, qb,
-#                                                          number_of_runs=5, bool_empty_qb=bool_empty_qb)
-#         mrrs.append(mrr)
-#         cleaned_annotations.append(cleaned_annotation)
-#
-#     return mrrs, cleaned_annotations
 
 
 

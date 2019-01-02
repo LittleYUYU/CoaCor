@@ -14,7 +14,6 @@ import os.path
 from torch.autograd import Variable
 import random
 import gensim
-# from lib.data.Tree import *
 import time
 import pickle
 import code_retrieval
@@ -42,8 +41,6 @@ def get_opt():
     parser.add_argument("-load_from", help="Path to load a pretrained model.")
     parser.add_argument("-show_str", required=True, help="string of arguments for saving models.")
     parser.add_argument('-load_embedding_from', required=False, help='Path to load the embedding.')
-    parser.add_argument('-train_portion', type=float, default=0.6)
-    parser.add_argument('-dev_portion', type=float, default=0.2)
     parser.add_argument('-cr_setup', default="default",
                         choices=["default", "slrnd", "slrnd_loadPre", "loadPre", "qt_new_cleaned_sl_qb_loadPre_fixPre",
                                  "qt_new_cleaned_rl_mrr_qb_loadPre_fixPre", "tp_qt_new_cleaned_rl_mrr_qb"],
@@ -69,7 +66,6 @@ def get_opt():
     parser.add_argument('-has_baseline', type=int, default=1, help="baseline model")
 
     # Optimization options
-    parser.add_argument('-data_type', default='text', help="Type of encoder to use. Options are [text|code|hybrid].")
     parser.add_argument('-batch_size', type=int, default=64, help='Maximum batch size')
     parser.add_argument("-max_generator_batches", type=int, default=128, help="""Split softmax input into small batches for memory efficiency. Higher is faster, but uses more memory.""")
 
@@ -106,8 +102,6 @@ def get_opt():
 
     # Evaluation
     parser.add_argument("-eval", action="store_true", help="Evaluate model only")
-    parser.add_argument("-eval_one", action="store_true", help="Evaluate only one sample.")
-    parser.add_argument("-eval_sample", action="store_true", default=False, help="Eval by sampling")
     parser.add_argument("-sent_reward", default="cr", choices=["cr", "cr_diff", "bleu", "cr_noqb"], help="Sentence reward.")
     parser.add_argument("-eval_codenn", action="store_true", help="Set to True to evaluate on codenn DEV/EVAL. Used for evaluation only.")
     parser.add_argument("-eval_codenn_all", action="store_true",
@@ -115,87 +109,22 @@ def get_opt():
     parser.add_argument("-empty_anno", action="store_true", help="Set to True to feed empty annotations.")
     parser.add_argument("-collect_anno", action="store_true", help="Set to True to collect generated annotations.")
 
-    # # Reward shaping
-    # parser.add_argument("-pert_func", type=str, default=None, help="Reward-shaping function.")
-    # parser.add_argument("-pert_param", type=float, default=None,help="Reward-shaping parameter.")
-
-    # Others
-    parser.add_argument("-no_update", action="store_true", default=False, help="No update round. Use to evaluate model samples.")
-    parser.add_argument("-sup_train_on_bandit", action="store_true", default=False, help="Supervised learning update round.")
-
-    parser.add_argument("-var_length", action="store_true", help="Evaluate model only")
-    parser.add_argument('-var_type', default='code', help="Type of var.")
-
     opt = parser.parse_args()
     opt.iteration = 0
     return opt
-
-def get_data_trees(trees):
-    data_trees = []
-    for t_json in trees:
-        for k, node in t_json.iteritems():
-            if node['parent'] == None:
-                root_idx = k
-        tree = json2tree_binary(t_json, Tree(), root_idx)
-        data_trees.append(tree)
-
-    return data_trees
-
-def get_data_leafs(trees, srcDicts):
-    leafs = []
-    for tree in trees:
-        leaf_contents = tree.leaf_contents()
-
-        leafs.append(srcDicts.convertToIdx(leaf_contents, lib.Constants.UNK_WORD))
-    return leafs
-
-def sort_test(dataset):
-    if opt.var_type == 'code':
-        length = [l.size(0) for l in dataset["test"]['src']]
-    elif opt.var_type == 'comment':
-        length = [l.size(0) for l in dataset["test"]['tgt']]
-
-    length, code, comment, trees = zip(*sorted(zip(length, dataset["test"]['src'], dataset["test"]['tgt'], dataset["test"]['trees']), key=lambda x: x[0]))
-
-    return length, code, comment, trees
 
 def load_data(opt):
     dataset = torch.load(opt.data)
     dicts = dataset["dicts"]
 
-    # filter test data.
-    if opt.var_length:
-        _, dataset["test"]['src'], dataset["test"]['tgt'], dataset["test"]['trees'] = sort_test(dataset)
-
-    if opt.data_type in {"code", "hybrid"}:
-        dataset["train"]['trees'] = get_data_trees(dataset["train"]['trees'])
-        dataset["valid"]['trees'] = get_data_trees(dataset["valid"]['trees'])
-        # dataset["valid_pg"]['trees'] = get_data_trees(dataset["valid_pg"]['trees'])
-        dataset["test"]['trees'] = get_data_trees(dataset["test"]['trees'])
-
-        dataset["train"]['leafs'] = get_data_leafs(dataset["train"]['trees'], dicts['src'])
-        dataset["valid"]['leafs'] = get_data_leafs(dataset["valid"]['trees'], dicts['src'])
-        # dataset["valid_pg"]['leafs'] = get_data_leafs(dataset["valid_pg"]['trees'], dicts['src'])
-        dataset["test"]['leafs'] = get_data_leafs(dataset["test"]['trees'], dicts['src'])
-    else:
-        size = len(dataset["train"]["src"])
-        for item in ["train", "valid", "test", "DEV", "EVAL"]:
-            if item not in dataset:
-                print("%s does not exist!" % item)
-                continue
-            dataset[item]['trees'] = [None] * size
-            dataset[item]['leafs'] = [None] * size
-
-    supervised_data = lib.Dataset(dataset["train"], opt.batch_size, opt.cuda, opt.data_type, eval=False)
-    rl_data = lib.Dataset(dataset["train"], opt.batch_size, opt.cuda, opt.data_type, eval=False)
-    valid_data = lib.Dataset(dataset["valid"], 50, opt.cuda, opt.data_type, eval=True) #opt.batch_size
-    # valid_pg_data = lib.Dataset(dataset["valid_pg"], opt.batch_size, opt.cuda, opt.data_type, eval=True)
-    test_data = lib.Dataset(dataset["test"], 50, opt.cuda, opt.data_type, eval=True)
-    vis_data = lib.Dataset(dataset["test"], 1, opt.cuda, opt.data_type, eval=True) # batch_size set to 1 for case study
+    supervised_data = lib.Dataset(dataset["train"], "sl_train", opt.batch_size, opt.cuda, eval=False)
+    rl_data = lib.Dataset(dataset["train"], "rl_train", opt.batch_size, opt.cuda, eval=False)
+    valid_data = lib.Dataset(dataset["valid"], "val", 50, opt.cuda, eval=True) #opt.batch_size
+    test_data = lib.Dataset(dataset["test"], "test", 50, opt.cuda, eval=True)
 
     if "DEV" in dataset:
-        DEV = lib.Dataset(dataset['DEV'], opt.batch_size, opt.cuda, opt.data_type, eval=True)
-        EVAL = lib.Dataset(dataset['EVAL'], opt.batch_size, opt.cuda, opt.data_type, eval=True)
+        DEV = lib.Dataset(dataset['DEV'], "DEV", opt.batch_size, opt.cuda, eval=True)
+        EVAL = lib.Dataset(dataset['EVAL'], "EVAL", opt.batch_size, opt.cuda, eval=True)
     else:
         DEV = None
         EVAL = None
@@ -210,7 +139,7 @@ def load_data(opt):
         print(" * number of EVAL sentences. %d" % len(dataset["EVAL"]["src"]))
     print(" * maximum batch size. %d" % opt.batch_size)
 
-    return dicts, supervised_data, rl_data, valid_data, test_data, vis_data, DEV, EVAL
+    return dicts, supervised_data, rl_data, valid_data, test_data, DEV, EVAL
 
 def get_aligned_embedding(emb_old, dict):
     """
@@ -220,7 +149,7 @@ def get_aligned_embedding(emb_old, dict):
     :return:
     """
     w2v = emb_old.wv
-    print("INFO: The pretrained emb matrix contains %d words, while the given dict contains %d words..." % (
+    print("The pretrained emb matrix contains %d words, while the given dict contains %d words..." % (
         len(w2v.vocab), dict.size()))
 
     emb = []
@@ -260,31 +189,15 @@ def create_optim(model):
     return optim
 
 def create_model(model_class, dicts, gen_out_size):
-    if opt.data_type == 'code':
-        encoder = lib.TreeEncoder(opt, dicts["src"])
-        decoder = lib.TreeDecoder(opt, dicts["tgt"])
-    elif opt.data_type == 'text':
-        encoder = lib.Encoder(opt, dicts["src"])
-        decoder = lib.TreeDecoder(opt, dicts["tgt"])
-    elif opt.data_type == 'hybrid':
-        code_encoder = lib.TreeEncoder(opt, dicts["src"])
-        text_encoder = lib.Encoder(opt, dicts["src"])
-        decoder = lib.HybridDecoder(opt, dicts["tgt"])
-    else:
-        raise Exception("Invalid data_type!")
-
+    encoder = lib.Encoder(opt, dicts["src"])
+    decoder = lib.TreeDecoder(opt, dicts["tgt"])
     # Use memory efficient generator when output size is large and
     # max_generator_batches is smaller than batch_size.
     if opt.max_generator_batches < opt.batch_size and gen_out_size > 1:
         generator = lib.MemEfficientGenerator(nn.Linear(opt.rnn_size, gen_out_size), opt)
     else:
         generator = lib.BaseGenerator(nn.Linear(opt.rnn_size, gen_out_size), opt)
-    if opt.data_type == 'code' or opt.data_type == 'text':
-        model = model_class(encoder, decoder, generator, opt)
-    elif opt.data_type == 'hybrid':
-        model = model_class(code_encoder, text_encoder, decoder, generator, opt)
-    else:
-        raise Exception("Invalid data_type!")
+    model = model_class(encoder, decoder, generator, opt)
     init(model, dicts)
     optim = create_optim(model)
 
@@ -295,14 +208,7 @@ def create_critic(checkpoint, dicts, opt):
         critic = checkpoint["critic"]
         critic_optim = checkpoint["critic_optim"]
     else:
-        if opt.data_type == 'code':
-            critic, critic_optim = create_model(lib.Tree2SeqModel, dicts, 1)
-        elif opt.data_type == 'text':
-            critic, critic_optim = create_model(lib.Seq2SeqModel, dicts, 1)
-        elif opt.data_type == 'hybrid':
-            critic, critic_optim = create_model(lib.Hybrid2SeqModel, dicts, 1)
-        else:
-            raise Exception("Invalid data_type!")
+        critic, critic_optim = create_model(lib.Seq2SeqModel, dicts, 1)
     if opt.cuda:
         critic.cuda(opt.gpus[0])
     return critic, critic_optim
@@ -330,7 +236,7 @@ def main():
         cuda.set_device(opt.gpus[0])
         torch.cuda.manual_seed(opt.seed)
 
-    dicts, supervised_data, rl_data, valid_data, test_data, vis_data, DEV, EVAL = load_data(opt)
+    dicts, supervised_data, rl_data, valid_data, test_data, DEV, EVAL = load_data(opt)
 
     print("Building model...")
 
@@ -341,14 +247,7 @@ def main():
         assert opt.critic_pretrain_epochs == 0
 
     if opt.load_from is None:
-        if opt.data_type == 'code':
-            model, optim = create_model(lib.Tree2SeqModel, dicts, dicts["tgt"].size())
-        elif opt.data_type == 'text':
-            model, optim = create_model(lib.Seq2SeqModel, dicts, dicts["tgt"].size())
-        elif opt.data_type == 'hybrid':
-            model, optim = create_model(lib.Hybrid2SeqModel, dicts, dicts["tgt"].size())
-        else:
-            raise Exception("Invalid data_type!")
+        model, optim = create_model(lib.Seq2SeqModel, dicts, dicts["tgt"].size())
         checkpoint = None
 
     else:
@@ -356,7 +255,6 @@ def main():
         checkpoint = torch.load(opt.load_from)#, map_location=lambda storage, loc: storage)
         model = checkpoint["model"]
         # config testing
-        #if opt.eval or opt.eval_sample or opt.eval_one:
         for attribute in ["predict_mask", "max_predict_length"]:
             model.opt.__dict__[attribute] = opt.__dict__[attribute]
         optim = checkpoint["optim"]
@@ -374,9 +272,6 @@ def main():
 
     # Start reinforce training immediately.
     print("opt.start_reinforce: ", opt.start_reinforce)
-    # if opt.start_reinforce == -1:
-    #     opt.start_decay_at = opt.start_epoch
-    #     opt.start_reinforce = opt.start_epoch
 
     # Check if end_epoch is large enough.
     if use_critic:
@@ -433,7 +328,6 @@ def main():
     #     opt.pert_func = lib.PertFunction(opt.pert_func, opt.pert_param)
 
     print("opt.eval: ", opt.eval)
-    print("opt.eval_sample: ", opt.eval_sample)
     print("opt.eval_codenn: ", opt.eval_codenn)
     print("opt.eval_codenn_all: ", opt.eval_codenn_all)
     print("opt.empty_anno: ", opt.empty_anno)
@@ -536,32 +430,10 @@ def main():
                 pred_file += ".masked"
             pred_file += ".metric%s" % opt.sent_reward
             evaluator.eval(test_data, pred_file)
-    # elif opt.eval_one:
-    #     assert opt.collect_anno
-    #     if opt.sent_reward in ["cr", "cr_diff", "cr_noqb"]:
-    #         metrics["sent_reward"]["eval"] = lib.RetReward.retrieval_mrr_eval_one
-    #
-    #     print("eval_one..")
-    #     evaluator = lib.Evaluator(model, metrics, dicts, opt)
-    #     # On test set.
-    #     pred_file = opt.load_from.replace(".pt", ".test_one.pred")
-    #
-    #     evaluator.eval(vis_data, pred_file)
-    # elif opt.eval_sample:
-    #     if opt.sent_reward in ["cr", "cr_diff", "cr_noqb"]:
-    #         metrics["sent_reward"]["eval"] = lib.RetReward.retrieval_mrr_eval
-    #     opt.no_update = True
-    #     critic, critic_optim = create_critic(checkpoint, dicts, opt)
-    #     reinforce_trainer = lib.ReinforceTrainer(model, critic, rl_data, test_data,
-    #                                              metrics, dicts, optim, critic_optim, opt)
-    #     reinforce_trainer.train(opt.start_epoch, opt.start_epoch, False)
 
     else:
         print("supervised_data.src: ", len(supervised_data.src))
         print("supervised_data.tgt: ", len(supervised_data.tgt))
-        if opt.data_type in {"code", "hybrid"}:
-            print("supervised_data.trees: ", len(supervised_data.trees))
-            print("supervised_data.leafs: ", len(supervised_data.leafs))
         xent_trainer = lib.Trainer(model, supervised_data, valid_data, metrics, dicts, optim, opt, DEV=DEV)
 
         if use_critic:

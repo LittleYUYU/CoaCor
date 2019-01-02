@@ -210,9 +210,17 @@ def bleuFromMaps(m1, m2):
   for key in m1:
     if key in m2:
       bl = bleu(m1[key], m2[key][0])
-      score = [ score[i] + bl[i] for i in range(0, len(bl))]
+      score = [score[i] + bl[i] for i in range(0, len(bl))]
       num += 1
-  return [s * 100.0 / num for s in score]
+  return [s * 1.0 / num for s in score] # * 100.0
+
+def bleuListFromMaps(m1, m2):
+    bleu_list = []
+    for key in m1:
+        if key in m2:
+            bl = bleu(m1[key], m2[key][0])
+            bleu_list.append(bl[0])
+    return bleu_list
 
 if __name__ == '__main__':
   # reference_file = sys.argv[1]
@@ -232,12 +240,9 @@ if __name__ == '__main__':
       lines = f.readlines()
   predictions = [line.strip().split('\t') for line in lines]
 
-  bleu_sentLevel = []
-  for pred in predictions:
-    (goldMap, predictionMap) = computeMapsFromPairList([pred], golds)
-    bleu_sentLevel.append(bleuFromMaps(goldMap, predictionMap)[0])
-  print sum(bleu_sentLevel) * 1.0 / len(bleu_sentLevel)
-
   (goldMap, predictionMap) = computeMapsFromPairList(predictions, golds)
   print bleuFromMaps(goldMap, predictionMap)[0]
+
+  bleu_list = bleuListFromMaps(goldMap, predictionMap)
+  print len(bleu_list), sum(bleu_list) / len(bleu_list)
 

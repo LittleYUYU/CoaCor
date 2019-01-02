@@ -37,29 +37,13 @@ class Evaluator(object):
             for i in range(len(data)): #
                 batch = data[i]
 
-                if self.opt.data_type == 'code':
-                    targets = batch[2]
-                    # attention_mask = batch[2][0].data.eq(lib.Constants.PAD).t()
-                    attention_mask = batch[1][2][0].data.eq(lib.Constants.PAD).t()
-                elif self.opt.data_type == 'text':
-                    targets = batch[2]
-                    # attention_mask = batch[0][0].data.eq(lib.Constants.PAD).t()
-                    attention_mask = batch[0][0].data.eq(lib.Constants.PAD).t()
-                elif self.opt.data_type == 'hybrid':
-                    targets = batch[2]
-                    attention_mask_code = batch[1][2][0].data.eq(lib.Constants.PAD).t()
-                    attention_mask_txt = batch[0][0].data.eq(lib.Constants.PAD).t()
-                else:
-                    raise Exception("Invalid data_type %s" % self.opt.data_type)
-
+                targets = batch[2]
+                attention_mask = batch[0][0].data.eq(lib.Constants.PAD).t()
                 qts = batch[4]
                 indices = batch[5]
 
                 if self.opt.has_attn:
-                    if self.opt.data_type == 'code' or self.opt.data_type == 'text':
-                        self.model.decoder.attn.applyMask(attention_mask)
-                    elif self.opt.data_type == 'hybrid':
-                        self.model.decoder.attn.applyMask(attention_mask_code, attention_mask_txt)
+                    self.model.decoder.attn.applyMask(attention_mask)
 
                 outputs = self.model(batch, True)
 
@@ -81,7 +65,10 @@ class Evaluator(object):
                     s0 = time.time()
                     rewards, _ = self.sent_reward_func(preds, targets,
                                                        codes=srcs, qts=qts,
-                                                       bool_empty_qb=self.opt.empty_anno)
+                                                       bool_empty_qb=self.opt.empty_anno,
+                                                       tgt_dict=self.dicts['tgt'],
+                                                       data_name=data.data_name,
+                                                       indices=indices)
                     # print("Eval one batch time: %.2f" % (time.time() - s0))
                 else:
                     rewards = [0.0] * len(preds)
@@ -97,12 +84,7 @@ class Evaluator(object):
                 total_words += num_words
                 total_sent_reward += sum(rewards)
 
-                if self.opt.data_type == 'code':
-                    total_sents += batch[2].size(1)
-                elif self.opt.data_type == 'text':
-                    total_sents += batch[2].size(1)
-                elif self.opt.data_type == 'hybrid':
-                    total_sents += batch[2].size(1)
+                total_sents += batch[2].size(1)
 
             loss = total_loss / total_words
             sent_reward = total_sent_reward / total_sents
