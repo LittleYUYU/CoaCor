@@ -353,10 +353,7 @@ def main():
                 metrics["sent_reward"] = {"train": None, "eval": None}
 
             evaluator = lib.Evaluator(model, metrics, dicts, opt)
-            if opt.var_length:
-                pred_file = opt.load_from.replace(".pt", ".train.pred.var"+opt.var_type)
-            else:
-                pred_file = opt.load_from.replace(".pt", ".train.pred")
+            pred_file = opt.load_from.replace(".pt", ".train.pred")
             if opt.eval_codenn or opt.eval_codenn_all:
                 raise Exception("Invalid eval_codenn!")
             print("train_data.src: ", len(supervised_data.src))
@@ -379,10 +376,7 @@ def main():
                 metrics["sent_reward"] = {"train": None, "eval": None}
 
             evaluator = lib.Evaluator(model, metrics, dicts, opt)
-            if opt.var_length:
-                pred_file = opt.load_from.replace(".pt", ".valid.pred.var"+opt.var_type)
-            else:
-                pred_file = opt.load_from.replace(".pt", ".valid.pred")
+            pred_file = opt.load_from.replace(".pt", ".valid.pred")
             if opt.eval_codenn:
                 pred_file = pred_file.replace("valid", "DEV")
                 valid_data = DEV
@@ -409,10 +403,7 @@ def main():
                 metrics["sent_reward"] = {"train": None, "eval": None}
 
             evaluator = lib.Evaluator(model, metrics, dicts, opt)
-            if opt.var_length:
-                pred_file = opt.load_from.replace(".pt", ".test.pred.var"+opt.var_type)
-            else:
-                pred_file = opt.load_from.replace(".pt", ".test.pred")
+            pred_file = opt.load_from.replace(".pt", ".test.pred")
             if opt.eval_codenn:
                 pred_file = pred_file.replace("test", "EVAL")
                 test_data = EVAL

@@ -20,7 +20,7 @@ The reason for breaking the BLEU computation into three phases cook_refs(), cook
 import sys, math, re, xml.sax.saxutils
 import subprocess
 import os
-
+import pdb
 # Added to bypass NIST-style pre-processing of hyp and ref files -- wade
 nonorm = 0
 
@@ -48,8 +48,10 @@ def normalize(s):
     # Added to bypass NIST-style pre-processing of hyp and ref files -- wade
     if (nonorm):
         return s.split()
-    if type(s) is not str:
-        s = " ".join(s)
+    #if type(s) is not str: 
+    #    s = " ".join(s)
+    assert type(s) is str
+
     # language-independent part:
     for (pattern, replace) in normalize1:
         s = re.sub(pattern, replace, s)
@@ -146,7 +148,7 @@ def score_cooked(allcomps, n=4, ground=0, smooth=1):
     return all_bleus
 
 def bleu(refs,  candidate, ground=0, smooth=1):
-    refs = cook_refs(refs)
+    refs = cook_refs(refs) 
     test = cook_test(candidate, refs)
     return score_cooked([test], ground=ground, smooth=smooth)
 
@@ -173,7 +175,7 @@ def computeMaps(predictions, goldfile):
         goldMap[rid] = []
       goldMap[rid].append(splitPuncts(pred.strip().lower()))
 
-  sys.stderr.write('Total: ' + str(len(goldMap)) + '\n')
+  #sys.stderr.write('Total: ' + str(len(goldMap)) + '\n')
   return (goldMap, predictionMap)
 
 
@@ -197,7 +199,7 @@ def computeMapsFromPairList(predictions, golds):
                 goldMap[rid] = []
             goldMap[rid].append(splitPuncts(pred.strip().lower()))
 
-    sys.stderr.write('Total: ' + str(len(goldMap)) + '\n')
+    #sys.stderr.write('Total: ' + str(len(goldMap)) + '\n')
     return (goldMap, predictionMap)
 
 
@@ -208,18 +210,22 @@ def bleuFromMaps(m1, m2):
   num = 0.0
 
   for key in m1:
-    if key in m2:
+    if key in m2: 
       bl = bleu(m1[key], m2[key][0])
       score = [score[i] + bl[i] for i in range(0, len(bl))]
       num += 1
   return [s * 1.0 / num for s in score] # * 100.0
 
-def bleuListFromMaps(m1, m2):
+def bleuListFromMaps(m1, m2, keys):
     bleu_list = []
-    for key in m1:
-        if key in m2:
-            bl = bleu(m1[key], m2[key][0])
-            bleu_list.append(bl[0])
+    #for key in m1:
+    #    if key in m2:
+    #        bl = bleu(m1[key], m2[key][0])
+    #        bleu_list.append(bl[0])
+    for key in keys:
+        assert key in m2 and key in m1
+        bl = bleu(m1[key], m2[key][0])
+        bleu_list.append(bl[0])
     return bleu_list
 
 if __name__ == '__main__':
@@ -234,15 +240,19 @@ if __name__ == '__main__':
 
   with open(reference_file, 'r') as f:
       lines = f.readlines()
-  golds = [line.strip().split('\t') for line in lines]
+  golds = [tuple(line.strip().split('\t')) for line in lines]
+  #golds = [(rid, sent.decode('utf-8')) for (rid, sent) in golds]
 
   with open(prediction_file, 'r') as f:
       lines = f.readlines()
-  predictions = [line.strip().split('\t') for line in lines]
-
+  predictions = [tuple(line.strip().split('\t')[-2:]) for line in lines]
+  #predictions = [(rid, sent.decode('utf-8')) for (rid, sent) in predictions]
+  
   (goldMap, predictionMap) = computeMapsFromPairList(predictions, golds)
   print bleuFromMaps(goldMap, predictionMap)[0]
+  #indices = [idx for idx, _ in predictions]
+  #bleu_list = bleuListFromMaps(goldMap, predictionMap, indices)
+  #print len(bleu_list), sum(bleu_list) / len(bleu_list)
+  
 
-  bleu_list = bleuListFromMaps(goldMap, predictionMap)
-  print len(bleu_list), sum(bleu_list) / len(bleu_list)
 

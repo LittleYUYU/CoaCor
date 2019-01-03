@@ -1,14 +1,19 @@
 import lib
+from collections import defaultdict
+import pdb
+
+from codenn_bleu import splitPuncts
 
 # loading codenn truths
-codenn_refs = []
+codenn_goldMaps = []
 for data_name in ["DEV", "EVAL"]:
-    with open("from_codenn/%s_ref.txt" % data_name, 'r') as f:
-        golds = []
+    with open("lib/metric/from_codenn/%s_ref.txt" % data_name, 'r') as f:
+        goldMap = defaultdict(list)
         for line in f.readlines():
-            rid, string = line.split('\t')
-            golds.append((int(rid), string.strip()))
-        codenn_refs.append(golds)
+            rid, sent = line.split('\t')
+            if type(sent) is not str: sent = sent.encode('utf-8') # avoid unicode
+            goldMap[int(rid)].append(splitPuncts(sent).strip().lower())
+        codenn_goldMaps.append(dict(goldMap))
 
 def clean_up_sentence(sent, remove_unk=False, remove_eos=False):
     if lib.Constants.EOS in sent:
@@ -23,6 +28,8 @@ def clean_up_sentence(sent, remove_unk=False, remove_eos=False):
 def clean_up_sentence_string(sent, dict):
     sent = clean_up_sentence(sent, remove_unk=False, remove_eos=True)
     sent_string = " ".join([dict.getLabel(w) for w in sent])
+    if type(sent_string) is not str: sent_string = sent_string.encode('utf-8')
+    sent_string = splitPuncts(sent_string.strip().lower())
     return sent, sent_string
 
 def single_sentence_bleu(pair, tgt_dict):
@@ -40,9 +47,9 @@ def single_sentence_bleu(pair, tgt_dict):
         # score = lib.Bleu.score_sentence(pred, gold, 4, smooth=1)[-1]
 
         # codenn_bleu
-        (goldMap, predictionMap) = computeMapsFromPairList([(0, pred_string)], [(0, gold_string)])
-        score = bleuFromMaps(goldMap, predictionMap)[0]
-
+        (goldMap, predictionMap) = lib.codenn_bleu.computeMapsFromPairList([(0, pred_string)], [(0, gold_string)])
+        score = lib.codenn_bleu.bleuFromMaps(goldMap, predictionMap)[0]
+        
         pred.append(lib.Constants.EOS)
         while len(pred) < length:
             pred.append(lib.Constants.PAD)
@@ -61,15 +68,16 @@ def sentence_bleu_codenn(preds, indices, data_name, tgt_dict):
         cleaned_pred, cleaned_pred_string = clean_up_sentence_string(pred, tgt_dict)
         cleaned_preds.append(cleaned_pred)
         cleaned_pred_strings.append(cleaned_pred_string)
-
-    (goldMap, predictionMap) = computeMapsFromPairList(
-        [(idx[1], pred_string) for idx, pred_string in zip(indices, cleaned_pred_strings)],
-        codenn_refs[0] if data_name == "DEV" else codenn_refs[1])
-    scores = bleuListFromMaps(goldMap, predictionMap)
+    cleaned_indices = [idx[1] for idx in indices]
+ 
+    predictionMap = {idx: [pred_string] for idx, pred_string in zip(cleaned_indices, cleaned_pred_strings)}
+    scores = lib.codenn_bleu.bleuListFromMaps(codenn_goldMaps[0] if data_name == "DEV" else codenn_goldMaps[1], predictionMap, cleaned_indices) 
+    #print len(scores), sum(scores)/len(scores) 
+    #pdb.set_trace()
     return scores, cleaned_preds
 
 def warpped_sentence_bleu(preds, targets, tgt_dict, data_name=None, indices=None, **kwargs):
-    if data_name is not None and data_name in {"DEV", "EVAL"}:
+    if data_name is not None and data_name in {"DEV", "EVAL"}: 
         return sentence_bleu_codenn(preds, indices, data_name, tgt_dict)
     else:
         return sentence_bleu(preds, targets, tgt_dict)

@@ -132,6 +132,8 @@ class Evaluator(object):
                 if qt is not None:
                     f.write(str(i) + ": qt: " + " ".join(qt).encode('utf-8', 'ignore') + '\n')
                 f.write(str(i) + ": reward: " + str(rw) + '\n')
+                if data.data_name in {"DEV", "EVAL"}:
+                    f.write("codenn" + "\t" + str(idx[1]) + "\t" + " ".join(pred).encode('utf-8', 'ignore') + '\n')
 
         loss, sent_reward, corpus_reward = metrics
         print("")
