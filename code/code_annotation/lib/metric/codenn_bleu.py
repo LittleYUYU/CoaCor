@@ -148,8 +148,10 @@ def score_cooked(allcomps, n=4, ground=0, smooth=1):
     return all_bleus
 
 def bleu(refs,  candidate, ground=0, smooth=1):
-    refs = cook_refs(refs) 
+    refs = cook_refs(refs)
+    #print refs
     test = cook_test(candidate, refs)
+    #print test
     return score_cooked([test], ground=ground, smooth=smooth)
 
 def splitPuncts(line):
@@ -160,14 +162,14 @@ def computeMaps(predictions, goldfile):
   goldMap = {}
   gf = open(goldfile, 'r')
 
-  for row in predictions:
+  for row in predictions: 
     cols = row.strip().split('\t')
     if len(cols) == 1:
       (rid, pred) = (cols[0], '') 
     else:
       (rid, pred) = (cols[0], cols[1]) 
     predictionMap[rid] = [splitPuncts(pred.strip().lower())]
-
+  
   for row in gf:
     (rid, pred) = row.split('\t') 
     if rid in predictionMap: # Only insert if the id exists for the method
@@ -229,30 +231,24 @@ def bleuListFromMaps(m1, m2, keys):
     return bleu_list
 
 if __name__ == '__main__':
-  # reference_file = sys.argv[1]
-  # predictions = []
-  # for row in sys.stdin:
-  #   predictions.append(row)
-  # (goldMap, predictionMap) = computeMaps(predictions, reference_file)
-
   reference_file = sys.argv[1]
-  prediction_file = sys.argv[2]
+  predictions = []
+  for row in sys.stdin:
+    predictions.append(row)
+  (goldMap, predictionMap) = computeMaps(predictions, reference_file)
 
-  with open(reference_file, 'r') as f:
-      lines = f.readlines()
-  golds = [tuple(line.strip().split('\t')) for line in lines]
-  #golds = [(rid, sent.decode('utf-8')) for (rid, sent) in golds]
+  #reference_file = sys.argv[1]
+  #prediction_file = sys.argv[2]
 
-  with open(prediction_file, 'r') as f:
-      lines = f.readlines()
-  predictions = [tuple(line.strip().split('\t')[-2:]) for line in lines]
-  #predictions = [(rid, sent.decode('utf-8')) for (rid, sent) in predictions]
-  
-  (goldMap, predictionMap) = computeMapsFromPairList(predictions, golds)
+  #with open(reference_file, 'r') as f:
+  #    lines = f.readlines()
+  #golds = [tuple(line.strip().split('\t')) for line in lines] 
+
+  #with open(prediction_file, 'r') as f:
+  #    lines = f.readlines()
+  #predictions = [tuple(line.strip().split('\t')[-2:]) for line in lines]
+
+  #(goldMap, predictionMap) = computeMapsFromPairList(predictions, golds)
   print bleuFromMaps(goldMap, predictionMap)[0]
-  #indices = [idx for idx, _ in predictions]
-  #bleu_list = bleuListFromMaps(goldMap, predictionMap, indices)
-  #print len(bleu_list), sum(bleu_list) / len(bleu_list)
   
-
 

@@ -49,8 +49,8 @@ def single_sentence_bleu(pair, tgt_dict):
         # codenn_bleu
         (goldMap, predictionMap) = lib.codenn_bleu.computeMapsFromPairList([(0, pred_string)], [(0, gold_string)])
         score = lib.codenn_bleu.bleuFromMaps(goldMap, predictionMap)[0]
-        
-        pred.append(lib.Constants.EOS)
+       
+        if len(pred) < length: pred.append(lib.Constants.EOS)
         while len(pred) < length:
             pred.append(lib.Constants.PAD)
 
