@@ -275,7 +275,7 @@ def create_model_name_string(c):
     string1 = 'qtlen_{}_codelen_{}_qtnwords_{}_codenwords_{}_batch_{}_optimizer_{}_lr_{}'. \
         format(c['qt_len'], c['code_len'], c['qt_n_words'], c['code_n_words'],
                c['batch_size'], c['optimizer'], str(c['lr'])[2:] if c['lr'] < 1.0 else str(c['lr']))
-    string2 = '_embsize_{}_lstmdims_{}_bowdropout_{}_seqencdropout_{}_'. \
+    string2 = '_embsize_{}_lstmdims_{}_bowdropout_{}_seqencdropout_{}'. \
         format(c['emb_size'], c['lstm_dims'], str(c['bow_dropout'])[2:], str(c['seqenc_dropout'])[2:])
     string3 = '_codeenc_{}'.format(c['code_encoder'])
     string = string1 + string2 + string3
@@ -323,10 +323,7 @@ if __name__ == '__main__':
             model_dir_str = "QC"
         model_dir_str += "_val%s" % args.val_setup # val data
 
-        if conf['code_encoder'] == 'bilstm':
-            conf['model_directory'] = conf['workdir'] + '%s/' % model_dir_str + 'bilstm/' + model_string + '/'
-        else:
-            conf['model_directory'] = conf['workdir'] + '%s/' % model_dir_str + 'bow/' + model_string + '/'
+        conf['model_directory'] = conf['ckptdir'] + '%s/' % model_dir_str + model_string + '/'
 
         if not os.path.exists(conf['model_directory']):
             os.makedirs(conf['model_directory'])

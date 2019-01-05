@@ -2,6 +2,7 @@ def get_config(args):
     conf = {
         # data_params
         'workdir': '../data/',
+        'ckptdir': '../checkpoint/',
 
         '<pad>': 0,
         '<sos>': 1,
@@ -42,7 +43,7 @@ def get_config(args):
         'log_every': 50,
         'save_every': 10,
         'patience': 20,
-        'reload': 1,  # reload>0, model is reloaded.
+        'reload': 0,  # reload>0, model is reloaded.
 
         # model_params
         'emb_size': 200,

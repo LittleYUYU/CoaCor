@@ -82,7 +82,7 @@ class StaQCDataset(data.Dataset):
 
         # < QT,Candidate>
         good_cand = self.processed_cand[offset].astype('int64')
-        good_cand, good_cand_len = self.pad_seq(good_cand, self.code_len)
+        good_cand, good_cand_len = self.pad_seq(good_cand, self.cand_len)
 
         # < QT,~Candidate>
         rand_offset = random.randint(0, self.data_len - 1)
@@ -90,7 +90,7 @@ class StaQCDataset(data.Dataset):
             rand_offset = random.randint(0, self.data_len - 1)
 
         bad_cand = self.processed_cand[rand_offset].astype('int64')
-        bad_cand, bad_cand_len = self.pad_seq(bad_cand, self.code_len)
+        bad_cand, bad_cand_len = self.pad_seq(bad_cand, self.cand_len)
 
         return qt, good_cand, bad_cand
 
@@ -181,7 +181,7 @@ class CodennDataset(data.Dataset):
 
         # < QT,Candidate>
         good_cand = self.processed_cand[offset].astype('int64')
-        good_cand, good_cand_len = self.pad_seq(good_cand, self.code_len)
+        good_cand = self.pad_seq(good_cand, self.cand_len)
 
         return qt, good_cand
 
