@@ -264,8 +264,6 @@ def parse_args():
 
     # optimization
     parser.add_argument("--lr", type=float, default=0.001, help="What is the learning rate?")
-    parser.add_argument("--loss", type=str, choices=["pairwise", "xent"], default="pairwise",
-                        help="Which loss function?")
     parser.add_argument("--margin", type=float, default=0.05, help="Margin for pairwise loss.")
     parser.add_argument("--optimizer", type=str,
                         choices=["adam", "adagrad", "sgd", "rmsprop", "asgd", "adadelta"],
