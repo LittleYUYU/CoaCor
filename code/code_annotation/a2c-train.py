@@ -349,8 +349,8 @@ def main():
                         lib.RetReward.qt_candidates_train
                     ))
 
-            if opt.collect_anno:
-                metrics["sent_reward"] = {"train": None, "eval": None}
+            #if opt.collect_anno:
+            #    metrics["sent_reward"] = {"train": None, "eval": None}
 
             evaluator = lib.Evaluator(model, metrics, dicts, opt)
             pred_file = opt.load_from.replace(".pt", ".train.pred")
@@ -372,8 +372,8 @@ def main():
             # On validation set.
             if opt.sent_reward in ["cr", "cr_diff", "cr_noqb"]:
                 metrics["sent_reward"]["eval"] = lib.RetReward.retrieval_mrr_eval
-            if opt.collect_anno:
-                metrics["sent_reward"] = {"train": None, "eval": None}
+            #if opt.collect_anno:
+            #    metrics["sent_reward"] = {"train": None, "eval": None}
 
             evaluator = lib.Evaluator(model, metrics, dicts, opt)
             pred_file = opt.load_from.replace(".pt", ".valid.pred")
@@ -395,12 +395,12 @@ def main():
             pred_file += ".metric%s" % opt.sent_reward
             evaluator.eval(valid_data, pred_file)
 
-        if True:
+        if False:
             # On test set.
             if opt.sent_reward in ["cr", "cr_diff", "cr_noqb"]:
                 metrics["sent_reward"]["eval"] = lib.RetReward.retrieval_mrr_eval
-            if opt.collect_anno:
-                metrics["sent_reward"] = {"train": None, "eval": None}
+            #if opt.collect_anno:
+            #    metrics["sent_reward"] = {"train": None, "eval": None}
 
             evaluator = lib.Evaluator(model, metrics, dicts, opt)
             pred_file = opt.load_from.replace(".pt", ".test.pred")

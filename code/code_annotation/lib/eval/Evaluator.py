@@ -61,7 +61,7 @@ class Evaluator(object):
                 targets = targets.data.t().tolist()
                 qts = [item.tolist() if item is not None else None for item in qts]
 
-                if not self.opt.collect_anno and self.sent_reward_func is not None:
+                if not (self.opt.collect_anno and self.opt.sent_reward != "bleu") and self.sent_reward_func is not None:
                     s0 = time.time()
                     rewards, _ = self.sent_reward_func(preds, targets,
                                                        codes=srcs, qts=qts,
