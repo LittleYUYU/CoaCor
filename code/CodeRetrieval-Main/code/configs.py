@@ -68,7 +68,9 @@ def get_config(args):
             conf['train_anno'] = 'sql.train.anno_%s.pkl' % args.qn_mode
             if (args.mode == "train" and args.val_setup == "codenn") or (
                 args.mode == "eval" and args.eval_setup == "codenn"):
+                conf['val_qt'] = 'codenn_combine_new.sql.dev.qt.pkl'
                 conf['val_anno'] = 'codenn_combine_new.sql.dev.anno_%s.pkl' % args.qn_mode
+                conf['test_qt'] = 'codenn_combine_new.sql.eval.qt.pkl'
                 conf['test_anno'] = 'codenn_combine_new.sql.eval.anno_%s.pkl' % args.qn_mode
             else:
                 conf['val_anno'] = 'sql.val.anno_%s.pkl' % args.qn_mode

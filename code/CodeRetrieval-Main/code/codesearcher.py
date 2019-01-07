@@ -30,7 +30,6 @@ class CodeSearcher:
     def __init__(self, conf):
         self.conf = conf
         self.path = conf['workdir']
-        self.valid_set = None
 
     #######################
     # Model Loading / saving #####
@@ -64,12 +63,20 @@ class CodeSearcher:
         data_loader = torch.utils.data.DataLoader(dataset=train_set, batch_size=batch_size,
                                                   shuffle=True, drop_last=True, num_workers=1)
 
+        # val set
+        if val_setup == "staqc":
+            val = StaQCDataset(self.path, self.conf, "val")
+        elif val_setup == "codenn":
+            val = CodennDataset(self.path, self.conf, "val")
+        else:
+            raise Exception("Invalid val_setup %s!" % val_setup)
+
         # MRR for the Best Saved model, if reload > 0, else -1
         if self.conf['reload'] > 0:
             if val_setup == "codenn":
-                _, max_mrr, _, _ = self.eval_codenn(model, 50, "val")
+                _, max_mrr, _, _ = self.eval_codenn(model, 50, val)
             else:
-                _, max_mrr, _, _ = self.eval(model, 50, "val")
+                _, max_mrr, _, _ = self.eval(model, 50, val)
         else:
             max_mrr = -1
 
@@ -98,9 +105,9 @@ class CodeSearcher:
                 print("validating..")
                 if val_setup == "codenn":
                     print("val_setup: codenn")
-                    acc1, mrr, map, ndcg = self.eval_codenn(model, 50, "val")
+                    acc1, mrr, map, ndcg = self.eval_codenn(model, 50, val)
                 else:
-                    acc1, mrr, map, ndcg = self.eval(model, 50, "val")  # "val"
+                    acc1, mrr, map, ndcg = self.eval(model, 50, val) 
 
                 if mrr > max_mrr:
                     self.save_model(model)
@@ -126,15 +133,7 @@ class CodeSearcher:
         :param dataset: which dataset to evaluate on
         :return: Accuracy, MRR, MAP, nDCG
         """
-        if self.valid_set is None or bool_collect:
-            if dataset == "val":
-                self.valid_set = CodennDataset(self.path, self.conf, "val")  # load dev set
-            elif dataset == "test":
-                self.valid_set = CodennDataset(self.path, self.conf, "test")  # load eval set
-            else:
-                raise Exception("Invalid dataset %s!" % dataset)
-
-        data_loader = torch.utils.data.DataLoader(dataset=self.valid_set, batch_size=poolsize, shuffle=False,
+        data_loader = torch.utils.data.DataLoader(dataset=dataset, batch_size=poolsize, shuffle=False,
                                                   num_workers=1)
         model = model.eval()
 
@@ -191,17 +190,7 @@ class CodeSearcher:
         :param dataset: which dataset to evaluate on
         :return: Accuracy, MRR, MAP, nDCG
         """
-        if self.valid_set is None or bool_collect:  # load evaluation dataset
-            if dataset == "train":
-                self.valid_set = StaQCDataset(self.path, self.conf, "train")  # load train set
-            elif dataset == "val":
-                self.valid_set = StaQCDataset(self.path, self.conf, "val")  # load val set
-            elif dataset == "test":
-                self.valid_set = StaQCDataset(self.path, self.conf, "test")  # load test set
-            else:
-                raise Exception("Invalid dataset %s!" % dataset)
-
-        data_loader = torch.utils.data.DataLoader(dataset=self.valid_set, batch_size=poolsize,
+        data_loader = torch.utils.data.DataLoader(dataset=dataset, batch_size=poolsize,
                                                   shuffle=False, drop_last=True,
                                                   num_workers=1)
 
@@ -386,11 +375,15 @@ if __name__ == '__main__':
             print('Evaluating Model')
 
             if args.eval_setup == "codenn":
-                searcher.eval_codenn(model, 50, "val")
-                searcher.eval_codenn(model, 50, "test")
+                val = CodennDataset(conf['workdir'], conf, "val")
+                searcher.eval_codenn(model, 50, val)
+                test = CodennDataset(conf['workdir'], conf, "test")
+                searcher.eval_codenn(model, 50, test)
             else:
-                searcher.eval(model, 50, "val")
-                searcher.eval(model, 50, "test")
+                val = StaQCDataset(conf['workdir'], conf, "val")
+                searcher.eval(model, 50, val)
+                test = StaQCDataset(conf['workdir'], conf, "test")
+                searcher.eval(model, 50, test)
 
         elif args.mode == 'collect':
             print('Collecting outputs...')
