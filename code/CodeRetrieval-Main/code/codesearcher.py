@@ -383,12 +383,13 @@ if __name__ == '__main__':
         elif args.mode == 'eval':
             print('Evaluating Model')
 
-            # Eval - evaluate for a StaQC data
-            searcher.eval(model, 50, "val")
-
             # Eval_codenn - Testing on Codenn Dataset - Make sure to change the config file
             # to load appropriate codenn data
-            searcher.eval_codenn(model, 50, "val")
+            searcher.eval_codenn(model, 50, "test")
+
+            # Eval - evaluate for a StaQC data
+            searcher.eval(model, 50, "val")
+            searcher.eval(model, 50, "test")
 
         elif args.mode == 'collect':
             print('Collecting outputs...')

@@ -365,7 +365,7 @@ def main():
                 pred_file += ".cr%s" % opt.cr_setup
             if opt.predict_mask:
                 pred_file += ".masked"
-            pred_file += "_metric%s" % opt.sent_reward
+            pred_file += ".metric%s" % opt.sent_reward
             evaluator.eval(supervised_data, pred_file)
 
         if True:
