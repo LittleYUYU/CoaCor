@@ -260,7 +260,9 @@ def parse_args():
                         choices=["sl", "rl_bleu", "rl_mrr",
                                  "codenn_gen"], help="Data set to use.")
     parser.add_argument('--val_setup', type=str, choices=["staqc", "codenn"], default="staqc",
-                        help="Which val set?")
+                        help="Which val set during training?")
+    parser.add_argument('--eval_setup', type=str, choices=["staqc", "codenn"], default="staqc",
+                        help="Which dataset to evaluate?")
 
     # optimization
     parser.add_argument("--lr", type=float, default=0.001, help="What is the learning rate?")
@@ -383,13 +385,12 @@ if __name__ == '__main__':
         elif args.mode == 'eval':
             print('Evaluating Model')
 
-            # Eval_codenn - Testing on Codenn Dataset - Make sure to change the config file
-            # to load appropriate codenn data
-            searcher.eval_codenn(model, 50, "test")
-
-            # Eval - evaluate for a StaQC data
-            searcher.eval(model, 50, "val")
-            searcher.eval(model, 50, "test")
+            if args.eval_setup == "codenn":
+                searcher.eval_codenn(model, 50, "val")
+                searcher.eval_codenn(model, 50, "test")
+            else:
+                searcher.eval(model, 50, "val")
+                searcher.eval(model, 50, "test")
 
         elif args.mode == 'collect':
             print('Collecting outputs...')

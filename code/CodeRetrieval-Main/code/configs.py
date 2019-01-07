@@ -12,11 +12,11 @@ def get_config(args):
         'train_qt': 'sql.train.qt.pkl',
         'train_code': 'sql.train.code.pkl',
 
-        'val_qt': 'codenn_combine_new.sql.dev.qt.pkl' if args.val_setup == "codenn" else 'sql.val.qt.pkl',
-        'val_code': 'codenn_combine_new.sql.dev.code.pkl' if args.val_setup == "codenn" else 'sql.val.code.pkl',
+        'val_qt': 'sql.val.qt.pkl',
+        'val_code': 'sql.val.code.pkl',
 
-        'test_qt': 'codenn_combine_new.sql.eval.qt.pkl' if args.val_setup == "codenn" else 'sql.test.qt.pkl',
-        'test_code': 'codenn_combine_new.sql.eval.code.pkl' if args.val_setup == "codenn" else 'sql.test.code.pkl',
+        'test_qt': 'sql.test.qt.pkl',
+        'test_code': 'sql.test.code.pkl',
 
         'qt_len': 20,
         'code_len': 120,
@@ -54,6 +54,7 @@ def get_config(args):
         'margin': 0.05,
         'code_encoder': 'bilstm',  # bow, bilstm
     }
+
     if conf['use_anno']:
         if args.qn_mode == "codenn_gen":
             conf['vocab_anno'] = 'sql.ga.vocab.pkl'
@@ -65,9 +66,19 @@ def get_config(args):
 
         else:
             conf['train_anno'] = 'sql.train.anno_%s.pkl' % args.qn_mode
-            conf['val_anno'] = ('codenn_combine_new.sql.dev.anno_%s.pkl' % args.qn_mode) if args.val_setup == "codenn"\
-                else ('sql.val.anno_%s.pkl' % args.qn_mode)
-            conf['test_anno'] = ('codenn_combine_new.sql.eval.anno_%s.pkl' % args.qn_mode) if args.val_setup == "codenn"\
-                else ('sql.test.anno_%s.pkl' % args.qn_mode)
+            if (args.mode == "train" and args.val_setup == "codenn") or (
+                args.mode == "eval" and args.eval_setup == "codenn"):
+                conf['val_anno'] = 'codenn_combine_new.sql.dev.anno_%s.pkl' % args.qn_mode
+                conf['test_anno'] = 'codenn_combine_new.sql.eval.anno_%s.pkl' % args.qn_mode
+            else:
+                conf['val_anno'] = 'sql.val.anno_%s.pkl' % args.qn_mode
+                conf['test_anno'] = 'sql.test.anno_%s.pkl' % args.qn_mode
+    else:
+        if (args.mode == "train" and args.val_setup == "codenn") or (
+            args.mode == "eval" and args.eval_setup == "codenn"):
+            conf['val_qt'] = 'codenn_combine_new.sql.dev.qt.pkl'
+            conf['val_code'] = 'codenn_combine_new.sql.dev.code.pkl'
+            conf['test_qt'] = 'codenn_combine_new.sql.eval.qt.pkl'
+            conf['test_code'] = 'codenn_combine_new.sql.eval.code.pkl'
 
     return conf
