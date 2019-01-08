@@ -61,8 +61,16 @@ def get_config(args):
             conf['anno_n_words'] = 827
 
             conf['train_anno'] = 'sql.train.ga.pkl'
-            conf['val_anno'] = 'codenn.sql.dev.ga.pkl' if args.val_setup == "codenn" else 'sql.valid.ga.pkl'
-            conf['test_anno'] = 'codenn.sql.eval.ga.pkl' if args.val_setup == "codenn" else 'sql.test.ga.pkl'
+
+            if (args.mode == "train" and args.val_setup == "codenn") or (
+                args.mode == "eval" and args.eval_setup == "codenn"):
+                conf['val_qt'] = 'codenn_combine_new.sql.dev.qt.pkl'
+                conf['val_anno'] = 'codenn.sql.dev.ga.pkl'
+                conf['test_qt'] = 'codenn_combine_new.sql.eval.qt.pkl'
+                conf['test_anno'] = 'codenn.sql.eval.ga.pkl'
+            else:
+                conf['val_anno'] = 'sql.valid.ga.pkl'
+                conf['test_anno'] = 'sql.test.ga.pkl'
 
         else:
             conf['train_anno'] = 'sql.train.anno_%s.pkl' % args.qn_mode
