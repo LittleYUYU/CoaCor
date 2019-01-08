@@ -41,18 +41,6 @@ def get_opt():
     parser.add_argument("-load_from", help="Path to load a pretrained model.")
     parser.add_argument("-show_str", required=True, help="string of arguments for saving models.")
     parser.add_argument('-load_embedding_from', required=False, help='Path to load the embedding.')
-    parser.add_argument('-cr_setup', default="default",
-                        choices=["default", "slrnd", "slrnd_loadPre", "loadPre", "qt_new_cleaned_sl_qb_loadPre_fixPre",
-                                 "qt_new_cleaned_rl_mrr_qb_loadPre_fixPre", "tp_qt_new_cleaned_rl_mrr_qb"],
-                        help="The CR model setup.")
-    parser.add_argument('-cr_replace_all_train', type=int, default=0,
-                        help="Set to 1 for replacing annos for all examples in training.")
-    parser.add_argument('-cr_replace_all_eval', type=int, default=0,
-                        help="Set to 1 for replacing annos for all examples in evaluation.")
-    parser.add_argument('-cr_qt_candidates_train', type=int, default=0,
-                        help="Set to 1 for considering QTs as candidates in training.")
-    parser.add_argument('-cr_qt_candidates_eval', type=int, default=0,
-                        help="Set to 1 for considering QTs as candidates in evaluation.")
 
     # Model options
     parser.add_argument('-layers', type=int, default=1, help='Number of layers in the LSTM encoder/decoder')
@@ -102,11 +90,10 @@ def get_opt():
 
     # Evaluation
     parser.add_argument("-eval", action="store_true", help="Evaluate model only")
-    parser.add_argument("-sent_reward", default="cr", choices=["cr", "cr_diff", "bleu", "cr_noqb"], help="Sentence reward.")
+    parser.add_argument("-sent_reward", default="bleu", choices=["cr", "bleu"], help="Sentence reward.")
     parser.add_argument("-eval_codenn", action="store_true", help="Set to True to evaluate on codenn DEV/EVAL. Used for evaluation only.")
     parser.add_argument("-eval_codenn_all", action="store_true",
                         help="Set to True to evaluate on codenn test set. Used for evaluation only.")
-    parser.add_argument("-empty_anno", action="store_true", help="Set to True to feed empty annotations.")
     parser.add_argument("-collect_anno", action="store_true", help="Set to True to collect generated annotations.")
 
     opt = parser.parse_args()
@@ -281,36 +268,8 @@ def main():
     nParams = sum([p.nelement() for p in model.parameters()])
     print("* number of parameters: %d" % nParams)
 
-    if opt.sent_reward != "bleu":
-        lib.RetReward.reward_mode = opt.sent_reward
-
-        # cr model to give the reward
-        print("CR setup: %s " % opt.cr_setup)
-        qt_dict_map = None
-        if opt.sent_reward == "cr_noqb":
-            path_to_qt_dict_map = os.path.join(os.path.dirname(opt.data), "qt_dict_map.pkl")
-            print("\n** Loading qt_dict_map from %s" % path_to_qt_dict_map)
-            qt_dict_map = pickle.load(open(path_to_qt_dict_map))
-
-        lib.RetReward.cr = code_retrieval.CrCritic(opt.cr_setup, qt_dict_map)
-
-        if opt.sent_reward in ["cr", "cr_diff"]:
-            lib.RetReward.replace_all_train = opt.cr_replace_all_train
-            if lib.RetReward.replace_all_train:
-                lib.RetReward.cal_mode_train = "batch"
-
-            lib.RetReward.replace_all_eval = opt.cr_replace_all_eval
-            assert lib.RetReward.cal_mode_eval == "batch"
-
-            lib.RetReward.qt_candidates_train = opt.cr_qt_candidates_train
-            lib.RetReward.qt_candidates_eval = opt.cr_qt_candidates_eval
-            if lib.RetReward.qt_candidates_train:
-                assert lib.RetReward.cal_mode_train == "batch", "qt_candidates_train works only in batch cal mode!"
-
-            print("train: cr_replace_all %d, cal_mode %s, qt_candidates_train %d." % (
-                lib.RetReward.replace_all_train, lib.RetReward.cal_mode_train, lib.RetReward.qt_candidates_train))
-            print("eval: cr_replace_all %d, cal_mode %s, qt_candidates_eval %d" % (
-            lib.RetReward.replace_all_eval, lib.RetReward.cal_mode_eval, lib.RetReward.qt_candidates_eval))
+    if opt.sent_reward == "cr":
+        lib.RetReward.cr = code_retrieval.CrCritic()
 
     # Metrics.
     print("sent_reward: %s" % opt.sent_reward)
@@ -324,31 +283,17 @@ def main():
         metrics["sent_reward"] = {"train": lib.RetReward.retrieval_mrr_train,
                                   "eval": lib.RetReward.retrieval_mrr_eval}
 
-    # if opt.pert_func is not None:
-    #     opt.pert_func = lib.PertFunction(opt.pert_func, opt.pert_param)
-
     print("opt.eval: ", opt.eval)
     print("opt.eval_codenn: ", opt.eval_codenn)
     print("opt.eval_codenn_all: ", opt.eval_codenn_all)
-    print("opt.empty_anno: ", opt.empty_anno)
     print("opt.collect_anno: ", opt.collect_anno)
 
     # Evaluate model
     if opt.eval:
         if False:
             # On training set.
-            if opt.sent_reward in ["cr", "cr_diff", "cr_noqb"]:
+            if opt.sent_reward == "cr":
                 metrics["sent_reward"]["eval"] = lib.RetReward.retrieval_mrr_train
-                if opt.sent_reward in ["cr", "cr_diff"]:
-                    lib.RetReward.replace_all_train = opt.cr_replace_all_eval
-                    if lib.RetReward.replace_all_train:
-                        lib.RetReward.cal_mode_train = "batch"
-                    lib.RetReward.qt_candidates_train = opt.cr_qt_candidates_eval
-                    print("WARNING: switch replace_all_train from %d to %d, cal_mode %s, qt_candidates %d.\n" % (
-                        opt.cr_replace_all_train, opt.cr_replace_all_eval, lib.RetReward.cal_mode_train,
-                        lib.RetReward.qt_candidates_train
-                    ))
-
             #if opt.collect_anno:
             #    metrics["sent_reward"] = {"train": None, "eval": None}
 
@@ -357,12 +302,6 @@ def main():
             if opt.eval_codenn or opt.eval_codenn_all:
                 raise Exception("Invalid eval_codenn!")
             print("train_data.src: ", len(supervised_data.src))
-            if opt.empty_anno:
-                pred_file += ".emptyAnno"
-            # elif opt.collect_anno:
-            #     pred_file += ".pkl"
-            if opt.cr_setup != "default":
-                pred_file += ".cr%s" % opt.cr_setup
             if opt.predict_mask:
                 pred_file += ".masked"
             pred_file += ".metric%s" % opt.sent_reward
@@ -370,7 +309,7 @@ def main():
 
         if True:
             # On validation set.
-            if opt.sent_reward in ["cr", "cr_diff", "cr_noqb"]:
+            if opt.sent_reward == "cr":
                 metrics["sent_reward"]["eval"] = lib.RetReward.retrieval_mrr_eval
             #if opt.collect_anno:
             #    metrics["sent_reward"] = {"train": None, "eval": None}
@@ -384,12 +323,6 @@ def main():
                 pred_file = pred_file.replace("valid", "DEV_all")
                 print("* Please input valid data = DEV_all")
             print("valid_data.src: ", len(valid_data.src))
-            if opt.empty_anno:
-                pred_file += ".emptyAnno"
-            # elif opt.collect_anno:
-            #     pred_file += ".pkl"
-            if opt.cr_setup != "default":
-                pred_file += ".cr%s" % opt.cr_setup
             if opt.predict_mask:
                 pred_file += ".masked"
             pred_file += ".metric%s" % opt.sent_reward
@@ -397,7 +330,7 @@ def main():
 
         if False:
             # On test set.
-            if opt.sent_reward in ["cr", "cr_diff", "cr_noqb"]:
+            if opt.sent_reward == "cr":
                 metrics["sent_reward"]["eval"] = lib.RetReward.retrieval_mrr_eval
             #if opt.collect_anno:
             #    metrics["sent_reward"] = {"train": None, "eval": None}
@@ -411,12 +344,6 @@ def main():
                 pred_file = pred_file.replace("test", "EVAL_all")
                 print("* Please input test data = EVAL_all")
             print("test_data.src: ", len(test_data.src))
-            if opt.empty_anno:
-                pred_file += ".emptyAnno"
-            # elif opt.collect_anno:
-            #     pred_file += ".pkl"
-            if opt.cr_setup != "default":
-                pred_file += ".cr%s" % opt.cr_setup
             if opt.predict_mask:
                 pred_file += ".masked"
             pred_file += ".metric%s" % opt.sent_reward

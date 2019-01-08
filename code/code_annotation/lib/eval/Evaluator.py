@@ -30,7 +30,6 @@ class Evaluator(object):
             all_preds = []
             all_targets = []
             all_srcs = []
-            all_qts = []
             all_indices = []
             all_rewards = []
 
@@ -39,7 +38,6 @@ class Evaluator(object):
 
                 targets = batch[2]
                 attention_mask = batch[0][0].data.eq(lib.Constants.PAD).t()
-                qts = batch[4]
                 indices = batch[5]
 
                 if self.opt.has_attn:
@@ -59,13 +57,11 @@ class Evaluator(object):
                     preds = self.model.translate(batch, self.max_length)
                     preds = preds.t().tolist()
                 targets = targets.data.t().tolist()
-                qts = [item.tolist() if item is not None else None for item in qts]
 
                 if not (self.opt.collect_anno and self.opt.sent_reward != "bleu") and self.sent_reward_func is not None:
                     s0 = time.time()
                     rewards, _ = self.sent_reward_func(preds, targets,
-                                                       codes=srcs, qts=qts,
-                                                       bool_empty_qb=self.opt.empty_anno,
+                                                       codes=srcs,
                                                        tgt_dict=self.dicts['tgt'],
                                                        data_name=data.data_name,
                                                        indices=indices)
@@ -76,7 +72,6 @@ class Evaluator(object):
                 all_preds.extend(preds)
                 all_targets.extend(targets)
                 all_srcs.extend(srcs)
-                all_qts.extend(qts)
                 all_indices.extend(indices)
                 all_rewards.extend(rewards)
 
@@ -96,23 +91,22 @@ class Evaluator(object):
             if self.opt.collect_anno:
                 assert pred_file is not None
                 print("Save annotations to %s (size %d)..." % (pred_file+".pkl", len(all_preds)))
-                pickle.dump((all_srcs, all_targets, all_qts, all_indices, all_preds),
+                pickle.dump((all_srcs, all_targets, all_indices, all_preds),
                             open(pred_file+".pkl", "wb"))
 
             if pred_file is not None:
                 self._convert_and_report(data, pred_file, all_preds, all_targets, all_srcs,
-                                         all_qts, all_indices, all_rewards,
+                                         all_indices, all_rewards,
                                          (loss, sent_reward, corpus_reward))
 
             return loss, sent_reward, corpus_reward
 
-    def _convert_and_report(self, data, pred_file, preds, targets, srcs, qts, indices, rewards, metrics):
+    def _convert_and_report(self, data, pred_file, preds, targets, srcs, indices, rewards, metrics):
         with open(pred_file, "w") as f:
             for i in range(len(preds)):
                 pred = preds[i]
                 target = targets[i]
                 src = srcs[i]
-                qt = qts[i]
                 idx = indices[i]
                 rw = rewards[i]
 
@@ -123,14 +117,11 @@ class Evaluator(object):
                 src = [self.dicts["src"].getLabel(w) for w in src]
                 pred = [self.dicts["tgt"].getLabel(w) for w in pred]
                 tgt = [self.dicts["tgt"].getLabel(w) for w in target]
-                qt = [self.dicts["qt"].getLabel(w) for w in qt] if qt is not None else qt
 
                 f.write(str(i) + ": idx: " + str(idx) + '\n')
                 f.write(str(i) + ": src: "+ " ".join(src).encode('utf-8', 'ignore') + '\n')
                 f.write(str(i) + ": pre: " + " ".join(pred).encode('utf-8', 'ignore') + '\n')
                 f.write(str(i) + ": tgt: "+ " ".join(tgt).encode('utf-8', 'ignore') + '\n')
-                if qt is not None:
-                    f.write(str(i) + ": qt: " + " ".join(qt).encode('utf-8', 'ignore') + '\n')
                 f.write(str(i) + ": reward: " + str(rw) + '\n')
                 if data.data_name in {"DEV", "EVAL"}:
                     f.write("codenn" + "\t" + str(idx[1]) + "\t" + " ".join(pred).encode('utf-8', 'ignore') + '\n')

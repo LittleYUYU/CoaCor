@@ -121,7 +121,6 @@ class ReinforceTrainer(object):
         for i in range(len(self.train_data)):
             batch = self.train_data[i]
             targets = batch[2]
-            qts = batch[4]
             attention_mask = batch[0][0].data.eq(lib.Constants.PAD).t()
             batch_size = targets.size(1)
 
@@ -139,7 +138,6 @@ class ReinforceTrainer(object):
             rewards, samples = self.sent_reward_func(
                 samples.t().tolist(), targets.data.t().tolist(),
                 codes=batch[0][0].t().tolist(),
-                qts=[item.tolist() for item in qts],
                 tgt_dict=self.dicts['tgt'])
             reward = sum(rewards)
             # print("Eval one batch time: %.2f" % (time.time() - s0))
