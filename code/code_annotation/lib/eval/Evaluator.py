@@ -51,11 +51,8 @@ class Evaluator(object):
 
                 srcs = batch[0][0]
                 srcs = srcs.data.t().tolist()
-                if self.opt.empty_anno:
-                    preds = [[lib.Constants.EOS] for _ in range(len(srcs))]
-                else:
-                    preds = self.model.translate(batch, self.max_length)
-                    preds = preds.t().tolist()
+                preds = self.model.translate(batch, self.max_length)
+                preds = preds.t().tolist()
                 targets = targets.data.t().tolist()
 
                 if not (self.opt.collect_anno and self.opt.sent_reward != "bleu") and self.sent_reward_func is not None:

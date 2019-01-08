@@ -124,7 +124,7 @@ def train_a2c(lang, bool_toy, bool_has_baseline, max_predict_length, pred_mask, 
 
 def test_a2c(lang, bool_toy, max_predict_length, pred_mask, sent_reward,
              load_from_path, eval_set, collect, attn, layers):
-    # python run.py test_a2c sql 1/0 max_len pred_mask cr_or_bleu load_from_path default|codenn|codenn_all collect attn layers
+    # python run.py test_a2c sql 1/0 20 pred_mask cr_or_bleu load_from_path default|codenn|codenn_all collect attn layers
     data_name = "_toy" if int(bool_toy) else ""
 
     arg_str = '-lang %s -load_from %s -sent_reward %s ' \

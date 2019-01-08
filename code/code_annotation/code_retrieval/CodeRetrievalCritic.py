@@ -9,7 +9,7 @@ import torch
 import torch.nn.functional as F
 
 from models import JointEmbeder
-from configs import get_config, get_config_noQB
+from configs import get_config
 
 GPU_ID = 0
 
@@ -136,7 +136,7 @@ class CrCritic(object):
 
         negative_qts, negative_codes = [], []
         for i in range(poolsize-1):
-            negative_index = random.randint(0, self.data_len[data_name] - 1)
+            negative_index = random.randint(0, len(self.qts) - 1)
             neg_qt, neg_code = self.qts[negative_index], self.codes[negative_index]
 
             while np.array_equal(neg_code, processed_code.reshape([-1])) or \
@@ -181,13 +181,14 @@ class CrCritic(object):
         :param qts: corresponding QTs.
         :return:
         """
+        #annotations = qts # debug
         processed_qts, processed_codes, processed_annotations = \
             gVar(self._batchify(qts, max_length=self.conf['qt_len'])), \
             gVar(self._batchify(codes, max_length=self.conf['code_len'])), \
             gVar(self._batchify(annotations, max_length=self.conf['qt_len']))
 
         annos_repr = self.model.qt_encoding(processed_annotations)
-        codes_repr = cr_model.code_encoding(processed_codes)
+        codes_repr = self.model.cand_encoding(processed_codes)
 
         rr_per_pos = []
         for pos_idx in range(len(codes)):
@@ -242,7 +243,7 @@ class CrCritic(object):
         positive_score = positive_score[0]
 
         mrrs_in_runs = []
-        neg_codes_repr = self.model.code_encoding(_neg_codes)
+        neg_codes_repr = self.model.cand_encoding(_neg_codes)
         sims_scores = F.cosine_similarity(neg_codes_repr, anno_repr).data.tolist()
         assert len(sims_scores) == (poolsize - 1) * number_of_runs
 

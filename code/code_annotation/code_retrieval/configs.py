@@ -30,6 +30,8 @@ def get_config():
         'emb_size': 200,
         'lstm_dims': 400,
         'margin': 0.05,
-        'code_encoder': 'bilstm'
+        'code_encoder': 'bilstm',
+        'bow_dropout': 1.0,
+        'seqenc_dropout': 1.0
     }
     return conf

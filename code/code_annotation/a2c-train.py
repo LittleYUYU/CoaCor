@@ -290,6 +290,9 @@ def main():
 
     # Evaluate model
     if opt.eval:
+        if opt.sent_reward == "cr" and (opt.eval_codenn or opt.eval_codenn_all):
+            raise Exception("Currently we do not support evaluating MRR on codenn!")
+
         if False:
             # On training set.
             if opt.sent_reward == "cr":
@@ -307,7 +310,7 @@ def main():
             pred_file += ".metric%s" % opt.sent_reward
             evaluator.eval(supervised_data, pred_file)
 
-        if True:
+        if False:
             # On validation set.
             if opt.sent_reward == "cr":
                 metrics["sent_reward"]["eval"] = lib.RetReward.retrieval_mrr_eval
@@ -328,7 +331,7 @@ def main():
             pred_file += ".metric%s" % opt.sent_reward
             evaluator.eval(valid_data, pred_file)
 
-        if False:
+        if True:
             # On test set.
             if opt.sent_reward == "cr":
                 metrics["sent_reward"]["eval"] = lib.RetReward.retrieval_mrr_eval
