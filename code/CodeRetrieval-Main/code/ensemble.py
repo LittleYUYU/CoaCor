@@ -115,53 +115,53 @@ def weighting_scores_staqc(data_name, weight, sims_collection1, sims_collection2
 
 
 if __name__ == "__main__":
-    def ensemble_codenn_set():
+    def ensemble(dataset, qc, qn):
+        if qc == "dcs":
+            qc_load_dir = "../checkpoint/QC_valcodenn/qtlen_20_codelen_120_qtnwords_7775_codenwords_7726_batch_256" \
+                          "_optimizer_adam_lr_001_embsize_200_lstmdims_400_bowdropout_35_seqencdropout_35_codeenc_bilstm/"
+        elif qc == "codenn": 
+            codenn_name = "dev" if data_name == "val" else "eval"
+            code_only = pickle.load(open(
+                "/home/zyao/Projects2/codebases/codenn/src/model/saved_models_CSCR_sql_cleaned_dropout7/%s_scores_collection.pkl" % codenn_name))
+        else:
+            raise Exception("Invalid QC model %s!" % qc)
+
+        if qn == "rl_mrr":
+            # QN-RLMRR
+            qn_load_dir = "../checkpoint/QN_rl_mrr_valcodenn/qtlen_20_codelen_120_qtnwords_7775_codenwords_7726_batch_256" \
+                          "_optimizer_adam_lr_001_embsize_200_lstmdims_400_bowdropout_35_seqencdropout_35_codeenc_bilstm/"
+        elif qn == "mle":
+            # QN-MLE
+            qn_load_dir = "../checkpoint/QN_sl_valcodenn/qtlen_20_codelen_120_qtnwords_7775_codenwords_7726_batch_512" \
+                          "_optimizer_adam_lr_001_embsize_200_lstmdims_400_bowdropout_5_seqencdropout_5_codeenc_bilstm/"
+        elif qn == "rl_bleu":
+            qn_load_dir = "../checkpoint/QN_rl_bleu_valcodenn/qtlen_20_codelen_120_qtnwords_7775_codenwords_7726_batch_128" \
+                          "_optimizer_adam_lr_001_embsize_200_lstmdims_400_bowdropout_5_seqencdropout_5_codeenc_bilstm/"
+        elif qn == "codenn_gen":
+            qn_load_dir = "../checkpoint/QN_codenn_gen_valcodenn/qtlen_20_codelen_120_qtnwords_7775_codenwords_7726_batch_256" \
+                          "_optimizer_adam_lr_001_embsize_200_lstmdims_400_bowdropout_35_seqencdropout_35_codeenc_bilstm/"
+        else:
+            raise Exception("Invalid QN model %s!" % qn)
+
         # reranking: QC + QN
         for data_name in ["val", "test"]:
-            # QC: DCS
-            qc_load_dir = "../checkpoint/QC_valcodenn/qtlen_20_codelen_120_qtnwords_7775_codenwords_7726_batch_256" \
-                          "_optimizer_adam_lr_001_embsize_200_lstmdims_400_bowdropout_35_seqencdropout_35_codeenc_bilstm/"
+            qc = pickle.load(open(qc_load_dir + "collect_sims_%s_%s.pkl" % (dataset, data_name)))
+            qn = pickle.load(open(qn_load_dir + "collect_sims_%s_%s.pkl" % (dataset, data_name)))
+            
+            if dataset == "codenn":
+                print("Ensemble results on codenn...")
+                pure_size = 111 if data_name == "val" else 100
+                for weight in [x * 0.1 for x in range(11)]:
+                    mrrs, _, _, _ = weighting_scores_codenn(data_name, pure_size, weight, qn, qc)  # "devide_max"
+                print("-" * 50)
+            elif dataset == "staqc":
+                print("Ensemble results on staqc")
+                for weight in [x * 0.1 for x in range(11)]:
+                    mrrs, _, _, _ = weighting_scores_staqc(data_name, weight, qn, qc) #"devide_max"
+                    print("Average mrr: %.4f, stdev: %.4f." % (np.average(mrrs), np.std(mrrs)))
+                print("-" * 50)
+            else:
+                raise Exception("Invalid dataset %s!" % dataset)
 
-            # QC: codenn
-            # codenn_name = "dev" if data_name == "val" else "eval"
-            # code_only = pickle.load(open(
-            #     "/home/zyao/Projects2/codebases/codenn/src/model/saved_models_CSCR_sql_cleaned_dropout7/%s_scores_collection.pkl" % codenn_name))
-
-            # QN-RLMRR
-            qn_load_dir = "../checkpoint/QN_rl_mrr_valcodenn/qtlen_20_codelen_120_qtnwords_7775_codenwords_7726_batch_256" \
-                          "_optimizer_adam_lr_001_embsize_200_lstmdims_400_bowdropout_35_seqencdropout_35_codeenc_bilstm/"
-
-            qc = pickle.load(open(qc_load_dir + "collect_sims_codenn_%s.pkl" % data_name))
-            qn = pickle.load(open(qn_load_dir + "collect_sims_codenn_%s.pkl" % data_name))
-
-            pure_size = 111 if data_name == "val" else 100
-            for weight in [x * 0.1 for x in range(11)]:
-                mrrs, _, _, _ = weighting_scores_codenn(data_name, pure_size, weight, qn, qc)  # "devide_max"
-            print("-" * 50)
-
-    def ensemble_staqc_set():
-        for data_name in ["val", "test"]:
-            # QC: DCS
-            qc_load_dir = "../checkpoint/QC_valcodenn/qtlen_20_codelen_120_qtnwords_7775_codenwords_7726_batch_256" \
-                          "_optimizer_adam_lr_001_embsize_200_lstmdims_400_bowdropout_35_seqencdropout_35_codeenc_bilstm/"
-
-            # QC: codenn
-            # codenn_name = "dev" if data_name == "val" else "eval"
-            # code_only = pickle.load(open(
-            #     "/home/zyao/Projects2/codebases/codenn/src/model/saved_models_CSCR_sql_cleaned_dropout7/%s_scores_collection.pkl" % codenn_name))
-
-            # QN-RLMRR
-            qn_load_dir = "../checkpoint/QN_rl_mrr_valcodenn/qtlen_20_codelen_120_qtnwords_7775_codenwords_7726_batch_256" \
-                          "_optimizer_adam_lr_001_embsize_200_lstmdims_400_bowdropout_35_seqencdropout_35_codeenc_bilstm/"
-
-            qc = pickle.load(open(qc_load_dir + "collect_sims_staqc_%s.pkl" % data_name))
-            qn = pickle.load(open(qn_load_dir + "collect_sims_staqc_%s.pkl" % data_name))
-
-            for weight in [x * 0.1 for x in range(11)]:
-                mrrs, _, _, _ = weighting_scores_staqc(data_name, weight, qn, qc) #"devide_max"
-                print("Average mrr: %.4f, stdev: %.4f." % (np.average(mrrs), np.std(mrrs)))
-
-            print("-" * 50)
-
-    # ensemble_codenn_set()
-    ensemble_staqc_set()
+    ensemble("codenn", "dcs", "codenn_gen")
+    ensemble("staqc", "dcs", "codenn_gen")
