@@ -119,10 +119,8 @@ if __name__ == "__main__":
         if qc == "dcs":
             qc_load_dir = "../checkpoint/QC_valcodenn/qtlen_20_codelen_120_qtnwords_7775_codenwords_7726_batch_256" \
                           "_optimizer_adam_lr_001_embsize_200_lstmdims_400_bowdropout_35_seqencdropout_35_codeenc_bilstm/"
-        elif qc == "codenn": 
-            codenn_name = "dev" if data_name == "val" else "eval"
-            code_only = pickle.load(open(
-                "/home/zyao/Projects2/codebases/codenn/src/model/saved_models_CSCR_sql_cleaned_dropout7/%s_scores_collection.pkl" % codenn_name))
+        elif qc == "codenn":  
+            qc_load_dir = "../checkpoint/QC_CODENN_saved_models_CSCR_sql_qtNoStem_dropout7/"
         else:
             raise Exception("Invalid QC model %s!" % qc)
 
@@ -145,23 +143,32 @@ if __name__ == "__main__":
 
         # reranking: QC + QN
         for data_name in ["val", "test"]:
-            qc = pickle.load(open(qc_load_dir + "collect_sims_%s_%s.pkl" % (dataset, data_name)))
-            qn = pickle.load(open(qn_load_dir + "collect_sims_%s_%s.pkl" % (dataset, data_name)))
+            if qc == "codenn":
+                if dataset == "staqc":
+                    codenn_tag = "staqc_%s" % data_name
+                else:
+                    codenn_tag = "dev" if data_name == "val" else "eval"
+                qc_results = pickle.load(open(qc_load_dir + "%s_scores_collection.pkl" % codenn_tag))
+                preprocess_collection2 = "devide_max"
+            else:
+                qc_results = pickle.load(open(qc_load_dir + "collect_sims_%s_%s.pkl" % (dataset, data_name)))
+                preprocess_collection2 = None
+            qn_results = pickle.load(open(qn_load_dir + "collect_sims_%s_%s.pkl" % (dataset, data_name)))
             
             if dataset == "codenn":
                 print("Ensemble results on codenn...")
                 pure_size = 111 if data_name == "val" else 100
                 for weight in [x * 0.1 for x in range(11)]:
-                    mrrs, _, _, _ = weighting_scores_codenn(data_name, pure_size, weight, qn, qc)  # "devide_max"
+                    mrrs, _, _, _ = weighting_scores_codenn(data_name, pure_size, weight, qn_results, qc_results, preprocess_collection2=preprocess_collection2) 
                 print("-" * 50)
             elif dataset == "staqc":
                 print("Ensemble results on staqc")
                 for weight in [x * 0.1 for x in range(11)]:
-                    mrrs, _, _, _ = weighting_scores_staqc(data_name, weight, qn, qc) #"devide_max"
+                    mrrs, _, _, _ = weighting_scores_staqc(data_name, weight, qn_results, qc_results, preprocess_collection2=preprocess_collection2)
                     print("Average mrr: %.4f, stdev: %.4f." % (np.average(mrrs), np.std(mrrs)))
                 print("-" * 50)
             else:
                 raise Exception("Invalid dataset %s!" % dataset)
 
-    ensemble("codenn", "dcs", "codenn_gen")
-    ensemble("staqc", "dcs", "codenn_gen")
+    ensemble("codenn", "codenn", "rl_mrr")
+    ensemble("staqc", "codenn", "rl_mrr")
