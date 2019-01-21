@@ -18,6 +18,8 @@ class StaQCDataset(data.Dataset):
     Dataset that has only positive samples.
     """
     def __init__(self, data_dir, conf, dataset):
+        self.data_name = dataset
+
         cand_str = 'anno' if conf['use_anno'] else 'code'
 
         f_qt, qt_len, f_cand, cand_len = \
@@ -104,6 +106,8 @@ class CodennDataset(data.Dataset):
     """
 
     def __init__(self, data_dir, conf, dataset):
+        self.data_name = dataset
+
         cand_str = 'anno' if conf['use_anno'] else 'code'
 
         f_qt, qt_len, f_cand, cand_len = \

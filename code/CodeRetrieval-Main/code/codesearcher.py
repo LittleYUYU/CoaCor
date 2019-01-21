@@ -171,7 +171,7 @@ class CodeSearcher:
             sims_collection.append(sims_per_qts)
 
         if bool_collect:
-            save_path = os.path.join(self.conf['model_directory'], "collect_sims_codenn_%s.pkl" % dataset)
+            save_path = os.path.join(self.conf['model_directory'], "collect_sims_codenn_%s.pkl" % dataset.data_name)
             print("Save collection to %s" % save_path)
             pickle.dump(sims_collection, open(save_path, "wb"))
 
@@ -219,7 +219,7 @@ class CodeSearcher:
                 sims_collection.append(scores)
 
         if bool_collect:
-            save_path = os.path.join(self.conf['model_directory'], "collect_sims_staqc_%s.pkl" % dataset)
+            save_path = os.path.join(self.conf['model_directory'], "collect_sims_staqc_%s.pkl" % dataset.data_name)
             print("Save collection to %s" % save_path)
             pickle.dump(sims_collection, open(save_path, "wb"))
 
@@ -387,9 +387,16 @@ if __name__ == '__main__':
 
         elif args.mode == 'collect':
             print('Collecting outputs...')
-            for dataset in ['val', 'test']:
-                # searcher.eval_codenn(model, 50, dataset, bool_collect=True)
-                searcher.eval(model, 50, dataset, bool_collect=True)
+            if args.eval_setup == "codenn":
+                val = CodennDataset(conf['workdir'], conf, "val")
+                searcher.eval_codenn(model, 50, val, bool_collect=True)
+                test = CodennDataset(conf['workdir'], conf, "test")
+                searcher.eval_codenn(model, 50, test, bool_collect=True)
+            else:
+                val = StaQCDataset(conf['workdir'], conf, "val")
+                searcher.eval(model, 50, val, bool_collect=True)
+                test = StaQCDataset(conf['workdir'], conf, "test")
+                searcher.eval(model, 50, test, bool_collect=True)
 
         else:
             print("Please provide a Valid argument for mode - train/eval")
