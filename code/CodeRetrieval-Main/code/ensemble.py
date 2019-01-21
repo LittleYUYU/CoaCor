@@ -1,8 +1,20 @@
 # ensemble.py
+import pickle
+from collections import defaultdict
+import numpy as np
+from utils import *
+
+
+def get_rank(sims):
+    negsims = np.negative(sims)
+    predict = np.argsort(negsims)
+    predict = [int(k) for k in predict]
+
+    return predict
 
 
 def weighting_scores_codenn(data_name, pure_size, weight, sims_collection1, sims_collection2,
-                     preprocess_collection1=None, preprocess_collection2=None):
+                     preprocess_collection1=None, preprocess_collection2=None, bool_by_run=False):
     mrrs, accs, maps, ndcgs = [], [], [], []
     mrrs_per_run = defaultdict(list)
 
@@ -46,14 +58,15 @@ def weighting_scores_codenn(data_name, pure_size, weight, sims_collection1, sims
     print("Data %s, weight %.3f:" % (data_name, weight))
     print('Size={}, ACC={}, MRR={}, MAP={}, nDCG={}'.format(
         len(mrrs), np.mean(accs), np.mean(mrrs), np.mean(maps), np.mean(ndcgs)))
-
-    average_mrr_by_run = []
-    print("#of runs: %d." % len(mrrs_per_run))
-    for run_idx, values in mrrs_per_run.items():
-        print("Run %d: size %d, average %.4f." % (run_idx, len(values), np.average(values)))
-        average_mrr_by_run.append(np.average(values))
-    print("Flat mean %.4f" % np.average(average_mrr_by_run))
-    print("Flat stdev %.4f" % np.std(average_mrr_by_run))
+    
+    if bool_by_run:
+        average_mrr_by_run = []
+        print("#of runs: %d." % len(mrrs_per_run))
+        for run_idx, values in mrrs_per_run.items():
+            print("Run %d: size %d, average %.4f." % (run_idx, len(values), np.average(values)))
+            average_mrr_by_run.append(np.average(values))
+        print("Flat mean %.4f" % np.average(average_mrr_by_run))
+        print("Flat stdev %.4f" % np.std(average_mrr_by_run))
 
     return mrrs, accs, maps, ndcgs
 
@@ -73,7 +86,7 @@ if __name__ == "__main__":
             #     "/home/zyao/Projects2/codebases/codenn/src/model/saved_models_CSCR_sql_cleaned_dropout7/%s_scores_collection.pkl" % codenn_name))
 
             # QN-RLMRR
-            qn_load_dir = "../checkpoint/QC_valcodenn/qtlen_20_codelen_120_qtnwords_7775_codenwords_7726_batch_256" \
+            qn_load_dir = "../checkpoint/QN_rl_mrr_valcodenn/qtlen_20_codelen_120_qtnwords_7775_codenwords_7726_batch_256" \
                           "_optimizer_adam_lr_001_embsize_200_lstmdims_400_bowdropout_35_seqencdropout_35_codeenc_bilstm/"
 
             qc = pickle.load(open(qc_load_dir + "collect_sims_codenn_%s.pkl" % data_name))
