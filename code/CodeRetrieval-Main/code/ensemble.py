@@ -3,6 +3,7 @@ import pickle
 from collections import defaultdict
 import numpy as np
 from utils import *
+import argparse
 
 
 def get_rank(sims):
@@ -115,6 +116,12 @@ def weighting_scores_staqc(data_name, weight, sims_collection1, sims_collection2
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Evaluating ensemble models.")
+    parser.add_argument('--dataset', type=str, required=True, choices=["codenn", "staqc"])
+    parser.add_argument('--qc', type=str, required=True, choices=["dcs", "codenn"])
+    parser.add_argument('--qn', type=str, required=True, choices=["rl_mrr", "mle", "rl_bleu", "codenn_gen"])
+    args.parser.parse_args()
+
     def ensemble(dataset, qc, qn):
         if qc == "dcs":
             qc_load_dir = "../checkpoint/QC_valcodenn/qtlen_20_codelen_120_qtnwords_7775_codenwords_7726_batch_256" \
@@ -170,5 +177,5 @@ if __name__ == "__main__":
             else:
                 raise Exception("Invalid dataset %s!" % dataset)
 
-    ensemble("codenn", "codenn", "rl_mrr")
-    ensemble("staqc", "codenn", "rl_mrr")
+    print("Evaluation on %s. QC=%s. QN=%s." % (args.dataset, args.qc, args.qn))
+    ensemble(args.dataset, args.qc, args.qn)
