@@ -18,18 +18,16 @@ import random
 
 def get_opt():
     parser = argparse.ArgumentParser(description='preprocess.py')
-    parser.add_argument("-token_code", required=True, help="Path to tokenized source data (C)")
-    parser.add_argument("-token_qb", required=True, help="Path to tokenized target data (QB)")
-    parser.add_argument("-token_qt", required=True, help="Path to tokenized query (QT)")
+    parser.add_argument("-token_src", required=True, help="Path to tokenized source data")
+    parser.add_argument("-token_tgt", required=True, help="Path to tokenized target data")
     parser.add_argument("-split_indices", required=True, help="Path to the indices of train/valid/test split")
     parser.add_argument('-save_data', required=True, help="Output file for the prepared data")
     # parser.add_argument('-src_vocab_size', type=int, default=50000, help="Size of the source vocabulary")
     # parser.add_argument('-tgt_vocab_size', type=int, default=50000, help="Size of the target vocabulary")
     parser.add_argument('-src_min_freq', type=int, default=2, help="Minimum word frequency for source")
     parser.add_argument('-tgt_min_freq', type=int, default=2, help="Minimum word frequency for target")
-    parser.add_argument('-code_word2id', default=None, help="Given source vocabulary")
-    parser.add_argument('-qb_word2id', default=None, help="Given target vocabulary")
-    parser.add_argument('-qt_word2id', default=None, help="Given query vocabulary")
+    parser.add_argument('-src_word2id', default=None, help="Given source vocabulary")
+    parser.add_argument('-tgt_word2id', default=None, help="Given target vocabulary")
     parser.add_argument('-src_seq_length', type=int, default=0, help="Maximum source sequence length")
     parser.add_argument('-tgt_seq_length', type=int, default=0, help="Maximum target sequence length to keep.")
     parser.add_argument('-seed', type=int, default=3435, help="Random seed")
@@ -80,21 +78,19 @@ def saveVocabulary(name, vocab, file):
     vocab.writeFile(file)
 
 
-def makeData(token_src, token_tgt, token_qt, indices, srcDicts, tgtDicts, qtDicts, bool_ignore=True):
+def makeData(token_src, token_tgt, indices, srcDicts, tgtDicts, bool_ignore=True):
 
-    src_ids, tgt_ids, qt_ids, trees, pos_indices = [], [], [], [], []
+    src_ids, tgt_ids, pos_indices = [], [], []
     ignored, exceps, empty = 0, 0, 0
 
     for sent_src, sent_tgt, sent_qt, sent_idx in zip(token_src, token_tgt, token_qt, indices):
-        if len(sent_src) == 0 or len(sent_tgt) == 0 or len(sent_qt) == 0:
+        if len(sent_src) == 0 or len(sent_tgt) == 0:
             empty += 1
             continue
 
         if len(sent_src) <= opt.src_seq_length and len(sent_tgt) <= opt.tgt_seq_length:
             src_ids += [srcDicts.convertToIdx(sent_src, Constants.UNK_WORD)]
             tgt_ids += [tgtDicts.convertToIdx(sent_tgt, Constants.UNK_WORD, eosWord=Constants.EOS_WORD)]
-            qt_ids += [qtDicts.convertToIdx(sent_qt, Constants.UNK_WORD)]
-            trees += []
             pos_indices += [sent_idx]
         else:
             if bool_ignore:
@@ -102,8 +98,6 @@ def makeData(token_src, token_tgt, token_qt, indices, srcDicts, tgtDicts, qtDict
             else:
                 src_ids += [srcDicts.convertToIdx(sent_src[:opt.src_seq_length], Constants.UNK_WORD)]
                 tgt_ids += [tgtDicts.convertToIdx(sent_tgt[:opt.tgt_seq_length], Constants.UNK_WORD, eosWord=Constants.EOS_WORD)]
-                qt_ids += [qtDicts.convertToIdx(sent_qt, Constants.UNK_WORD)]
-                trees += []
                 pos_indices += [sent_idx]
 
     print(('Prepared %d sentences ' +
@@ -111,16 +105,15 @@ def makeData(token_src, token_tgt, token_qt, indices, srcDicts, tgtDicts, qtDict
            '(%d ignored due to empty.)') %
           (len(src_ids), ignored, opt.src_seq_length, opt.tgt_seq_length, empty))
     # print(('Prepared %d sentences ' + '(%d ignored due to Exception)') % (len(src_ids), exceps))
-    return src_ids, tgt_ids, qt_ids, trees, pos_indices
+    return src_ids, tgt_ids, pos_indices
 
 
-def makeDataGeneral(name, token_src, token_tgt, token_qt, indices, dicts, bool_ignore=True):
+def makeDataGeneral(name, token_src, token_tgt, indices, dicts, bool_ignore=True):
     print('Preparing ' + name + '...')
     res = {}
-    res['src'], res['tgt'], res['qt'], res['trees'], res['indices'] = \
-        makeData(token_src, token_tgt, token_qt, indices,
-                 dicts['src'], dicts['tgt'], dicts['qt'],
-                 bool_ignore=bool_ignore)
+    res['src'], res['tgt'], res['indices'] = makeData(token_src, token_tgt, indices,
+                                                      dicts['src'], dicts['tgt'],
+                                                      bool_ignore=bool_ignore)
     return res
 
 
@@ -128,43 +121,36 @@ def main():
     torch.manual_seed(opt.seed)
 
     # load meta data
-    idx2tokenized_src = pickle.load(open(opt.token_code)) #src=code
-    idx2tokenized_tgt = pickle.load(open(opt.token_qb)) #tgt=qb
-    idx2tokenized_qt = pickle.load(open(opt.token_qt))
+    idx2tokenized_src = pickle.load(open(opt.token_src)) #src=code
+    idx2tokenized_tgt = pickle.load(open(opt.token_tgt)) #tgt=annotation
     split_indices = pickle.load(open(opt.split_indices)) # a dict of {train/valid/test: iids}
     split_indices["valid"] = split_indices["valid"][:(len(split_indices["valid"]) // 50 * 50)]
     split_indices["test"] = split_indices["test"][:(len(split_indices["test"]) // 50 * 50)] #poolsize = 50
 
     print("Data loaded!")
 
-    if opt.code_word2id is not None:
-        code_word2id = pickle.load(open(opt.code_word2id))
-        print("Code vocab loaded!")
-    if opt.qb_word2id is not None:
-        qb_word2id = pickle.load(open(opt.qb_word2id))
-        print("QB vocab loaded!")
-    if opt.qt_word2id is not None:
-        qt_word2id = pickle.load(open(opt.qt_word2id))
-        print("QT vocab loaded!")
+    if opt.src_word2id is not None:
+        src_word2id = pickle.load(open(opt.src_word2id))
+        print("src vocab loaded!")
+    if opt.tgt_word2id is not None:
+        tgt_word2id = pickle.load(open(opt.tgt_word2id))
+        print("tgt vocab loaded!")
 
-    train_src, train_tgt, train_qt, \
-    valid_src, valid_tgt, valid_qt,\
-    test_src, test_tgt, test_qt = [], [], [], [], [], [], [], [], []
+    train_src, train_tgt, valid_src, valid_tgt, test_src, test_tgt = [], [], [], [], [], []
     train_indices, valid_indices, test_indices = [], [], []
-    for item, (container_src, container_tgt, container_qt, container_indices) in zip(["train", "valid", "test"],
-                                                    [(train_src, train_tgt, train_qt, train_indices),
-                                                     (valid_src, valid_tgt, valid_qt, valid_indices),
-                                                     (test_src, test_tgt, test_qt, test_indices)]):
+    for item, (container_src, container_tgt, container_indices) in zip(["train", "valid", "test"],
+                                                    [(train_src, train_tgt, train_indices),
+                                                     (valid_src, valid_tgt, valid_indices),
+                                                     (test_src, test_tgt, test_indices)]):
         iids = split_indices[item]
         for qt_idx, qb_idx, code_idx in iids:
             container_src.append(idx2tokenized_src[code_idx])
             container_tgt.append(idx2tokenized_tgt[qb_idx])
-            container_qt.append(idx2tokenized_qt[qt_idx])
             container_indices.append((qt_idx, qb_idx, code_idx))
 
     print("train, valid, test size: %d, %d, %d" % (
         len(split_indices["train"]), len(split_indices["valid"]), len(split_indices["test"])))
-    assert len(train_src) == len(train_tgt) == len(train_qt)
+    assert len(train_src) == len(train_tgt)
 
     # average lengths distribution
     src_seq_lengths, tgt_seq_lengths = [], []
@@ -193,41 +179,26 @@ def main():
     print("src_seq_length %d, tgt_seq_length %d" % (opt.src_seq_length, opt.tgt_seq_length))
 
     dicts = dict()
-    if opt.code_word2id is None:
+    if opt.src_word2id is None:
         dicts['src'] = makeVocabulary('code', train_src, 0, opt.src_min_freq)
     else:
-        dicts['src'] = transformVocabulary('code', code_word2id)
-    if opt.qb_word2id is None:
+        dicts['src'] = transformVocabulary('code', src_word2id)
+    if opt.tgt_word2id is None:
         dicts['tgt'] = makeVocabulary('annotation', train_tgt, 0, opt.tgt_min_freq)
     else:
-        dicts['tgt'] = transformVocabulary('annotation', qb_word2id)
-    assert opt.qt_word2id is not None
-    dicts['qt'] = transformVocabulary('query', qt_word2id)
+        dicts['tgt'] = transformVocabulary('annotation', tgt_word2id)
 
     saveVocabulary("code (src)", dicts['src'], opt.save_data + '.code.dict')
     saveVocabulary("annotation (tgt)", dicts['tgt'], opt.save_data + '.anno.dict')
 
     save_data = {}
     save_data['dicts'] = dicts
-    save_data['train'] = makeDataGeneral('train', train_src, train_tgt, train_qt, train_indices, dicts, bool_ignore=False)
-    save_data['valid'] = makeDataGeneral('valid', valid_src, valid_tgt, valid_qt, valid_indices, dicts, bool_ignore=False)
-    # valid_pg = random.sample(zip(valid_src, valid_tgt, valid_qt), 2000)
-    # valid_src_pg, valid_tgt_pg, valid_qt_pg = zip(*valid_pg)
-    # save_data['valid_pg'] = makeDataGeneral('valid_pg', list(valid_src_pg), list(valid_tgt_pg), list(valid_qt_pg), dicts)
-    save_data['test'] = makeDataGeneral('test', test_src, test_tgt, test_qt, test_indices, dicts, bool_ignore=False)
+    save_data['train'] = makeDataGeneral('train', train_src, train_tgt, train_indices, dicts, bool_ignore=False)
+    save_data['valid'] = makeDataGeneral('valid', valid_src, valid_tgt, valid_indices, dicts, bool_ignore=False)
+    save_data['test'] = makeDataGeneral('test', test_src, test_tgt, test_indices, dicts, bool_ignore=False)
 
     print("Saving data to \"" + opt.save_data + ".train.pt\"...")
     torch.save(save_data, opt.save_data + ".train.pt")
-
-    # # toy data for quick test
-    # toy_data = {}
-    # toy_data['dicts'] = save_data['dicts']
-    # for item in ["train", "valid", "test"]:
-    #     toy_data[item] = {}
-    #     for k,v in save_data[item].items():
-    #         toy_data[item][k] = v[:1000]
-    # print("Saving toy data to \"" + opt.save_data + ".train_toy.pt\"...")
-    # torch.save(toy_data, opt.save_data + ".train_toy.pt")
 
     # word2vec dump
     code_w2v_model = gensim.models.Word2Vec(train_src, size=512, window=5, min_count=2, workers=16)

@@ -8,16 +8,14 @@ def preprocess(lang):
     # python run.py preprocess sql
 
     run = 'python preprocess.py ' \
-          '-token_code ../../data/version2/source/%s_index_to_tokenized_code.pkl ' \
-          '-token_qb ../../data/version3/source/%s_index_to_tokenized_qt.pkl ' \
-          '-token_qt ../../data/version2/source/%s_index_to_tokenized_qt.pkl ' \
-          '-split_indices ../../data/version2/origin/split_indices_%s_cleaned.pkl ' \
-          '-code_word2id ../../data/version2/source/Vocab_Files/%s.code.vocab.pkl ' \
+          '-token_src ../../data/source/%s_index_to_tokenized_code.pkl ' \
+          '-token_tgt ../../data/source/%s_index_to_tokenized_qt.pkl ' \
+          '-split_indices ../../data/source/split_indices_%s_cleaned.pkl ' \
+          '-src_word2id ../../data/source/%s.code.vocab.pkl ' \
           '-src_seq_length 120 -tgt_seq_length 20 '\
-          '-qt_word2id ../../data/version2/source/Vocab_Files/%s.qt.vocab.pkl ' \
+          '-tgt_word2id ../../data/source/%s.qt.vocab.pkl ' \
           '-save_data dataset/train_qt_new_cleaned/%s.processed_all ' \
-          '> log_qt_new_cleaned/log.%s.preprocess' % (
-          lang, lang, lang, lang, lang, lang, lang, lang)
+          '> log_qt_new_cleaned/log.%s.preprocess' % (lang, lang, lang, lang, lang, lang, lang)
 
     print(run)
     a = os.system(run)
