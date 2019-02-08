@@ -120,9 +120,11 @@ if __name__ == "__main__":
     parser.add_argument('--dataset', type=str, required=True, choices=["codenn", "staqc"])
     parser.add_argument('--qc', type=str, required=True, choices=["dcs", "codenn"])
     parser.add_argument('--qn', type=str, required=True, choices=["rl_mrr", "mle", "rl_bleu", "codenn_gen"])
+    parser.add_argument('--sig_test', type=bool, default=False)
+    parser.add_argument('--weight', type=float, default=-1.0)
     args.parser.parse_args()
 
-    def ensemble(dataset, qc, qn):
+    def ensemble(dataset, qc, qn, weight_given, bool_sig_test):
         if qc == "dcs":
             qc_load_dir = "../checkpoint/QC_valcodenn/qtlen_20_codelen_120_qtnwords_7775_codenwords_7726_batch_256" \
                           "_optimizer_adam_lr_001_embsize_200_lstmdims_400_bowdropout_35_seqencdropout_35_codeenc_bilstm/"
@@ -161,16 +163,24 @@ if __name__ == "__main__":
                 qc_results = pickle.load(open(qc_load_dir + "collect_sims_%s_%s.pkl" % (dataset, data_name)))
                 preprocess_collection2 = None
             qn_results = pickle.load(open(qn_load_dir + "collect_sims_%s_%s.pkl" % (dataset, data_name)))
-            
+
+            if weight_given >= 0.0:
+                weight_range = [weight_given]
+                print("Given weight=%.2f" % weight_given)
+            else:
+                weight_range = [x * 0.1 for x in range(11)]
+
             if dataset == "codenn":
                 print("Ensemble results on codenn...")
                 pure_size = 111 if data_name == "val" else 100
-                for weight in [x * 0.1 for x in range(11)]:
-                    mrrs, _, _, _ = weighting_scores_codenn(data_name, pure_size, weight, qn_results, qc_results, preprocess_collection2=preprocess_collection2) 
+                for weight in weight_range:
+                    mrrs, _, _, _ = weighting_scores_codenn(data_name, pure_size, weight, qn_results, qc_results,
+                                                            preprocess_collection2=preprocess_collection2,
+                                                            bool_by_run=bool_sig_test) 
                 print("-" * 50)
             elif dataset == "staqc":
                 print("Ensemble results on staqc")
-                for weight in [x * 0.1 for x in range(11)]:
+                for weight in weight_range:
                     mrrs, _, _, _ = weighting_scores_staqc(data_name, weight, qn_results, qc_results, preprocess_collection2=preprocess_collection2)
                     print("Average mrr: %.4f, stdev: %.4f." % (np.average(mrrs), np.std(mrrs)))
                 print("-" * 50)
@@ -178,4 +188,4 @@ if __name__ == "__main__":
                 raise Exception("Invalid dataset %s!" % dataset)
 
     print("Evaluation on %s. QC=%s. QN=%s." % (args.dataset, args.qc, args.qn))
-    ensemble(args.dataset, args.qc, args.qn)
+    ensemble(args.dataset, args.qc, args.qn, args.weight, args.sig_test)
