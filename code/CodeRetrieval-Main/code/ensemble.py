@@ -120,9 +120,9 @@ if __name__ == "__main__":
     parser.add_argument('--dataset', type=str, required=True, choices=["codenn", "staqc"])
     parser.add_argument('--qc', type=str, required=True, choices=["dcs", "codenn"])
     parser.add_argument('--qn', type=str, required=True, choices=["rl_mrr", "mle", "rl_bleu", "codenn_gen"])
-    parser.add_argument('--sig_test', type=bool, default=False)
+    parser.add_argument('--sig_test', default=False, action='store_true')
     parser.add_argument('--weight', type=float, default=-1.0)
-    args.parser.parse_args()
+    args = parser.parse_args()
 
     def ensemble(dataset, qc, qn, weight_given, bool_sig_test):
         if qc == "dcs":
