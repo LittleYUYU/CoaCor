@@ -26,9 +26,34 @@ The processed data for CA or CR are under their own folder.
 
 ## 3. Code
 ### Requirements
+- python 2.7
+- pytorch 0.4.1
 
-### Run the model
+### Run Code Annotation model
+Source code is under folder [code/code_annotation/](code/code_annotation/). 
+
+For MLE training, see TODO.
+
+For RL-MRR training, see `run.sh`.
+
+Please refer to [code/code_annotation/run.py](code/code_annotation/run.py) for mode details.
+
+### Run Code Retrieval model
+Source code is under folder [code/CodeRetrieval-Main/code/](code/CodeRetrieval-Main/code/). 
+
+For training, see `run_train.sh`.
+
+For testing, see `run_eval.sh`.
+
+**NOTE**: We provide checkpoints and outputs of the [QC-based CR model](code/CodeRetrieval-Main/checkpoint/QC_valcodenn/qtlen_20_codelen_120_qtnwords_7775_codenwords_7726_batch_256_optimizer_adam_lr_001_embsize_200_lstmdims_400_bowdropout_35_seqencdropout_35_codeenc_bilstm/) and [QN-RL-MRR CR model](code/CodeRetrieval-Main/checkpoint/QN_rl_mrr_valcodenn/qtlen_20_codelen_120_qtnwords_7775_codenwords_7726_batch_256_optimizer_adam_lr_001_embsize_200_lstmdims_400_bowdropout_35_seqencdropout_35_codeenc_bilstm/) under the [checkpoint folder](code/CodeRetrieval-Main/checkpoint/). Please rename them if you would train your own model and overwrite these folders.
+
 
 ## 4. Citation
 Please kindly cite the following paper if you use the code or the dataset in this repo:
 To be added.
+
+## 5. Acknowledgement
+
+Our implementation is adapted from: https://github.com/wanyao1992/code_summarization_public and https://github.com/khanhptnk/bandit-nmt for CA and https://github.com/guxd/deep-code-search for CR.
+
+
