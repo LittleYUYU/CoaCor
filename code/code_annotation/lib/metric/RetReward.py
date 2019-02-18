@@ -8,6 +8,8 @@ import lib
 cr = None
 cal_mode_train = "sentence" # sample a pool or use the batch as a pool
 cal_mode_eval = "batch"
+reward_lambda = 1.0
+reward_gamma = 1.0
 
 
 def empty_check(ids):
@@ -102,7 +104,18 @@ def retrieval_mrr_eval(annotations, qts, codes, **kwargs):
     return mrrs, cleaned_annotations
 
 
+def mixed_mrr_bleu_train(annotations, qts, codes, tgt_dict, data_name=None, indices=None):
+    mrrs, cleaned_annotations = retrieval_mrr_train(annotations, qts, codes)
+    bleus, _ = wrapped_sentence_bleu(annotations, qts, tgt_dict, data_name=data_name, indices=indices)
+    rewards = mrrs * reward_lambda + bleus * (1 - reward_lambda)
+
+    return rewards, cleaned_annotations
 
 
+def mixed_mrr_bleu_eval(annotations, qts, codes, tgt_dict, data_name=None, indices=None):
+    mrrs, cleaned_annotations = retrieval_mrr_eval(annotations, qts, codes)
+    bleus, _ = wrapped_sentence_bleu(annotations, qts, tgt_dict, data_name=data_name, indices=indices)
+    rewards = mrrs * reward_lambda + bleus * (1 - reward_lambda)
 
+    return rewards, cleaned_annotations
 

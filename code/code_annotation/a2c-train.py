@@ -277,8 +277,8 @@ def main():
     metrics["xent_loss"] = lib.Loss.weighted_xent_loss
     metrics["critic_loss"] = lib.Loss.weighted_mse
     if opt.sent_reward == "bleu":
-        metrics["sent_reward"] = {"train": lib.Reward.warpped_sentence_bleu,
-                                  "eval": lib.Reward.warpped_sentence_bleu}
+        metrics["sent_reward"] = {"train": lib.Reward.wrapped_sentence_bleu,
+                                  "eval": lib.Reward.wrapped_sentence_bleu}
     else:
         metrics["sent_reward"] = {"train": lib.RetReward.retrieval_mrr_train,
                                   "eval": lib.RetReward.retrieval_mrr_eval}

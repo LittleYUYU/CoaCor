@@ -76,7 +76,7 @@ def sentence_bleu_codenn(preds, indices, data_name, tgt_dict):
     #pdb.set_trace()
     return scores, cleaned_preds
 
-def warpped_sentence_bleu(preds, targets, tgt_dict, data_name=None, indices=None, **kwargs):
+def wrapped_sentence_bleu(preds, targets, tgt_dict, data_name=None, indices=None, **kwargs):
     if data_name is not None and data_name in {"DEV", "EVAL"}: 
         return sentence_bleu_codenn(preds, indices, data_name, tgt_dict)
     else:
