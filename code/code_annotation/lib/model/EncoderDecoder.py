@@ -69,7 +69,7 @@ class Encoder(nn.Module):
         emb = pack(self.word_lut(inputs[0]), inputs[1])
 
         outputs, hidden_t = self.rnn(emb, hidden)
-        outputs = unpack(outputs)[0]
+        outputs = unpack(outputs)[0] 
         return hidden_t, outputs
 
 class StackedLSTM(nn.Module):

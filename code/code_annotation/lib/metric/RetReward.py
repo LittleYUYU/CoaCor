@@ -1,5 +1,6 @@
 import numpy as np
 import lib
+import pdb
 
 # import code_retrieval
 # cr = code_retrieval.CrCritic()
@@ -106,16 +107,16 @@ def retrieval_mrr_eval(annotations, qts, codes, **kwargs):
 
 def mixed_mrr_bleu_train(annotations, qts, codes, tgt_dict, data_name=None, indices=None):
     mrrs, cleaned_annotations = retrieval_mrr_train(annotations, qts, codes)
-    bleus, _ = wrapped_sentence_bleu(annotations, qts, tgt_dict, data_name=data_name, indices=indices)
-    rewards = mrrs * reward_lambda + bleus * (1 - reward_lambda)
-
+    bleus, _ = lib.Reward.wrapped_sentence_bleu(annotations, qts, tgt_dict, data_name=data_name, indices=indices)
+    rewards = [mrr*reward_lambda + bleu*(1-reward_lambda)for mrr, bleu in zip(mrrs, bleus)] 
+    
     return rewards, cleaned_annotations
 
 
 def mixed_mrr_bleu_eval(annotations, qts, codes, tgt_dict, data_name=None, indices=None):
     mrrs, cleaned_annotations = retrieval_mrr_eval(annotations, qts, codes)
-    bleus, _ = wrapped_sentence_bleu(annotations, qts, tgt_dict, data_name=data_name, indices=indices)
-    rewards = mrrs * reward_lambda + bleus * (1 - reward_lambda)
+    bleus, _ = lib.Reward.wrapped_sentence_bleu(annotations, qts, tgt_dict, data_name=data_name, indices=indices)
+    rewards = [mrr*reward_lambda + bleu*(1-reward_lambda)for mrr, bleu in zip(mrrs, bleus)]
 
     return rewards, cleaned_annotations
 
