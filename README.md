@@ -32,7 +32,7 @@ The processed data for CA or CR are under their own folder.
 ### Run Code Annotation model
 Source code is under folder [code/code_annotation/](code/code_annotation/). 
 
-For MLE training, see TODO.
+For MLE training, see `run_mle.sh`.
 
 For RL-MRR training, see `run.sh`.
 
