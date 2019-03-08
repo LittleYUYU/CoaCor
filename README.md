@@ -1,7 +1,7 @@
 # CoaCor: Code Annotation for Code Retrieval with Reinforcement Learning
 
 ## 1. Introduction
-This repository contains source code and dataset for paper "CoaCor: Code Annotation for Code Retrieval with Reinforcement Learning" (To appear at WWW'19), which explores how to generate rich code annotations (CA) that can be useful to code retrieval (CR) task. 
+This repository contains source code and dataset for paper "[CoaCor: Code Annotation for Code Retrieval with Reinforcement Learning](http://web.cse.ohio-state.edu/~yao.470/paper/CoaCor.pdf)" (To appear at WWW'19), which explores how to generate rich code annotations (CA) that can be useful to code retrieval (CR) task. 
 
 ![Framework Image](doc/figure/framework2_camera.png)
 - **Training phase**. A code annotation model is trained via reinforcement learning to maximize retrieval-based rewards given by a QC-based code retrieval model.
