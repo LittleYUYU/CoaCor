@@ -26,9 +26,10 @@ Please decompress the `train_need_decompress.tar` file [here](code/code_annotati
 #### Code Retrieval 
 All data can be found [here](code/CodeRetrieval-Main/data/). The data can be accessed using "pickle". This folder basically contains:
 - The vocabulary for NL question (sql.qt.vocab.pkl) and code snippet (sql.code.vocab.pkl).
-- The processed training/validation/test data from StaQC. For example, "sql.train.qt.pkl" contains the NL questions in the training data, and "sql.val.code.pkl" contains the code snippets in the validation data.
+- The processed training/validation/test data from StaQC. For example, "sql.train.qt.pkl" contains the NL questions in the training data, and "sql.val.code.pkl" contains the code snippets in the validation data.<br>
+By pairing "sql.train.qt.pkl" and "sql.train.code.pkl" line-by-line, you can read pairs of `<question, code>`.
 - The processed DEV/EVAL set. For example, "codenn_combine_new.sql.dev.qt.pkl" contains the NL questions in the DEV set, and "codenn_combine_new.sql.eval.code.pkl" contains the code snippets in the EVAL set (as well as their negative samples in evaluation). <br>
-Note that we have formatted these two sets to fit [our evaluation implementation](https://github.com/LittleYUYU/CoaCor/blob/master/code/CodeRetrieval-Main/code/codesearcher.py#L128). Each file should look like:
+Note that we have formatted these two sets to fit [our evaluation implementation](https://github.com/LittleYUYU/CoaCor/blob/master/code/CodeRetrieval-Main/code/codesearcher.py#L128). For example, when pairing "codenn_combine_new.sql.dev.qt.pkl" and "codenn_combine_new.sql.dev.code.pkl" line-by-line, you will read:
 ```
 # The first 50 items correspond to one <q1, c1> pair with its 49 negative code snippets. 
 # Note that the dataset contains three NL descriptions for each positive code snippet, so we have [q11, q12, q13].
@@ -46,7 +47,7 @@ item99:[q21, q22, q23], neg code49
 # Since DEV originally has 111 positive code snippets, the size of our processed data = 50 * 111 * 20 (20 runs as Iyer et al.) = 111000.
 # For EVAL: 50 * 100 * 20 = 100000.
 ```
-
+In [our evaluation implementation](https://github.com/LittleYUYU/CoaCor/blob/master/code/CodeRetrieval-Main/code/codesearcher.py#L128), the data loader loads 50 items per batch, and computes the similarity between each question and each code snippet (e.g., `q11 vs. pos code c1`, `q11 vs. neg code1`, `q12 vs. pos code c1`).
 
 
 ## 3. Code
