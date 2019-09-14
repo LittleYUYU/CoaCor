@@ -21,8 +21,33 @@ Outputs of each CA model, i.e., CodeNN, MLE-based, RL-BLEU and RL_MRR (ours), ca
 
 ### Processed Data
 The processed data for CA or CR are under their own folder.
-- For Code Annotations: please decompress the `train_need_decompress.tar` file [here](code/code_annotation/dataset/train_qt_new_cleaned/).
-- For Code Retrieval: all data can be found [here](code/CodeRetrieval-Main/data/).
+#### Code Annotations
+Please decompress the `train_need_decompress.tar` file [here](code/code_annotation/dataset/train_qt_new_cleaned/).
+#### Code Retrieval 
+All data can be found [here](code/CodeRetrieval-Main/data/). The data can be accessed using "pickle". This folder basically contains:
+- The vocabulary for NL question (sql.qt.vocab.pkl) and code snippet (sql.code.vocab.pkl).
+- The processed training/validation/test data from StaQC. For example, "sql.train.qt.pkl" contains the NL questions in the training data, and "sql.val.code.pkl" contains the code snippets in the validation data.
+- The processed DEV/EVAL set. For example, "codenn_combine_new.sql.dev.qt.pkl" contains the NL questions in the DEV set, and "codenn_combine_new.sql.eval.code.pkl" contains the code snippets in the EVAL set (as well as their negative samples in evaluation). <br>
+Note that we have formatted these two sets to fit [our evaluation implementation](https://github.com/LittleYUYU/CoaCor/blob/master/code/CodeRetrieval-Main/code/codesearcher.py#L128). Each file should look like:
+```
+# The first 50 items correspond to one <q1, c1> pair with its 49 negative code snippets. 
+# Note that the dataset contains three NL descriptions for each positive code snippet, so we have [q11, q12, q13].
+item0: [q11, q12, q13], pos code c1
+item1: [q11, q12, q13], neg code1
+...
+item49:[q11, q12, q13], neg code49
+
+# The second 50 items correspond to another <q2, c2> pair with its 49 negative code snippets.
+item50:[q21, q22, q23], pos code c2
+item51:[q21, q22, q23], neg code1
+...
+item99:[q21, q22, q23], neg code49
+
+# Since DEV originally has 111 positive code snippets, the size of our processed data = 50 * 111 * 20 (20 runs as Iyer et al.) = 111000.
+# For EVAL: 50 * 100 * 20 = 100000.
+```
+
+
 
 ## 3. Code
 ### Requirements
@@ -50,7 +75,16 @@ For testing, see `run_eval.sh`.
 
 ## 4. Citation
 Please kindly cite the following paper if you use the code or the dataset in this repo:
-To be added.
+```
+@inproceedings{yao2019coacor,
+  title={CoaCor: Code Annotation for Code Retrieval with Reinforcement Learning},
+  author={Yao, Ziyu and Peddamail, Jayavardhan Reddy and Sun, Huan},
+  booktitle={The World Wide Web Conference},
+  pages={2203--2214},
+  year={2019},
+  organization={ACM}
+}
+```
 
 ## 5. Acknowledgement
 
