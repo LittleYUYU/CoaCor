@@ -31,6 +31,12 @@ def get_opt():
     parser.add_argument('-src_seq_length', type=int, default=0, help="Maximum source sequence length")
     parser.add_argument('-tgt_seq_length', type=int, default=0, help="Maximum target sequence length to keep.")
     parser.add_argument('-seed', type=int, default=3435, help="Random seed")
+    parser.add_argument('--DEV_src', required=False, help="Path to tokenized DEV source data.")
+    parser.add_argument('--DEV_tgt', required=False, help="Path to tokenized DEV target data.")
+    parser.add_argument('--DEV_indices', required=False, help="Path to the indices of DEV data.")
+    parser.add_argument('--EVAL_src', required=False, help="Path to tokenized EVAL source data.")
+    parser.add_argument('--EVAL_tgt', required=False, help="Path to tokenized EVAL target data.")
+    parser.add_argument('--EVAL_indices', required=False, help="Path to the indices of EVAL data.")
 
     opt = parser.parse_args()
     return opt
@@ -83,7 +89,7 @@ def makeData(token_src, token_tgt, indices, srcDicts, tgtDicts, bool_ignore=True
     src_ids, tgt_ids, pos_indices = [], [], []
     ignored, exceps, empty = 0, 0, 0
 
-    for sent_src, sent_tgt, sent_qt, sent_idx in zip(token_src, token_tgt, token_qt, indices):
+    for sent_src, sent_tgt, sent_idx in zip(token_src, token_tgt, indices):
         if len(sent_src) == 0 or len(sent_tgt) == 0:
             empty += 1
             continue
@@ -196,6 +202,30 @@ def main():
     save_data['train'] = makeDataGeneral('train', train_src, train_tgt, train_indices, dicts, bool_ignore=False)
     save_data['valid'] = makeDataGeneral('valid', valid_src, valid_tgt, valid_indices, dicts, bool_ignore=False)
     save_data['test'] = makeDataGeneral('test', test_src, test_tgt, test_indices, dicts, bool_ignore=False)
+
+    if opt.DEV_src and opt.DEV_tgt and opt.DEV_indices:
+        DEV_idx2src = pickle.load(open(opt.DEV_src, "rb"))
+        DEV_idx2tgt = pickle.load(open(opt.DEV_tgt, "rb"))
+        DEV_indices = pickle.load(open(opt.DEV_indices, "rb"))
+        
+        DEV_src, DEV_tgt = [], []
+        for tgt_idx, src_idx in DEV_indices:
+            DEV_src.append(DEV_idx2src[src_idx])
+            DEV_tgt.append(DEV_idx2tgt[tgt_idx])
+
+        save_data['DEV'] = makeDataGeneral('DEV', DEV_src, DEV_tgt, DEV_indices, dicts, bool_ignore=False)
+
+    if opt.EVAL_src and opt.EVAL_tgt and opt.EVAL_indices:
+        EVAL_idx2src = pickle.load(open(opt.EVAL_src, "rb"))
+        EVAL_idx2tgt = pickle.load(open(opt.EVAL_tgt, "rb"))
+        EVAL_indices = pickle.load(open(opt.EVAL_indices, "rb"))
+        
+        EVAL_src, EVAL_tgt = [], []
+        for tgt_idx, src_idx in EVAL_indices:
+            EVAL_src.append(EVAL_idx2src[src_idx])
+            EVAL_tgt.append(EVAL_idx2tgt[tgt_idx])
+
+        save_data['EVAL'] = makeDataGeneral('EVAL', EVAL_src, EVAL_tgt, EVAL_indices, dicts, bool_ignore=False)
 
     print("Saving data to \"" + opt.save_data + ".train.pt\"...")
     torch.save(save_data, opt.save_data + ".train.pt")

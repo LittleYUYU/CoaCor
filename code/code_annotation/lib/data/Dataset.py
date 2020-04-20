@@ -14,7 +14,7 @@ class Dataset(object):
         self.data_name = data_name
         self.src = data["src"]
         self.tgt = data["tgt"]
-        self.qt = data["qt"]
+        #self.qt = data["qt"]
         self.idx = data["indices"]
         assert(len(self.src) == len(self.tgt))
         self.cuda = cuda
@@ -26,9 +26,9 @@ class Dataset(object):
 
 
     def shuffle(self):
-        data = list(zip(self.src, self.tgt, self.qt, self.idx))
+        data = list(zip(self.src, self.tgt, self.idx))
         random.shuffle(data)
-        self.src, self.tgt, self.qt, self.idx = zip(*data)
+        self.src, self.tgt, self.idx = zip(*data)
 
     def _batchify(self, data, align_right=False, include_lengths=False):
         lengths = [x.size(0) for x in data]
@@ -48,7 +48,7 @@ class Dataset(object):
         assert index < self.numBatches, "%d > %d" % (index, self.numBatches)
         srcBatch, src_lengths = self._batchify(self.src[index*self.batchSize:(index + 1)*self.batchSize], include_lengths=True)
         tgtBatch = self._batchify(self.tgt[index * self.batchSize:(index + 1) * self.batchSize])
-        qtBatch = self.qt[index * self.batchSize:(index + 1) * self.batchSize]
+        #qtBatch = self.qt[index * self.batchSize:(index + 1) * self.batchSize]
         idxBatch = self.idx[index * self.batchSize:(index + 1) * self.batchSize]
         indices = range(len(srcBatch))
 
@@ -59,15 +59,15 @@ class Dataset(object):
             # b = Variable(b, volatile=self.eval)
             return b
 
-        src_batch = zip(indices, srcBatch, tgtBatch, qtBatch, idxBatch)
+        src_batch = zip(indices, srcBatch, tgtBatch, idxBatch)
         src_batch, src_lengths = zip(*sorted(zip(src_batch, src_lengths), key=lambda x: -x[1]))
-        indices, srcBatch, tgtBatch, qtBatch, idxBatch = zip(*src_batch)
+        indices, srcBatch, tgtBatch, idxBatch = zip(*src_batch)
 
         return (wrap(srcBatch), list(src_lengths)), \
                 None, \
                 wrap(tgtBatch), \
                 indices, \
-                qtBatch, idxBatch
+                None, idxBatch
 
     def __len__(self):
         return self.numBatches

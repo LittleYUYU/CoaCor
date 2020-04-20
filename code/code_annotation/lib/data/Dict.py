@@ -35,8 +35,10 @@ class Dict(object):
         with codecs.open(filename, 'w', 'utf-8') as file:
             for i in range(self.size()):
                 label = self.idxToLabel[i]
-                file.write('%s %d\n' % (label, i))
-
+                try:
+                    file.write('%s %d\n' % (label, i))
+                except:
+                    file.write('%s %d\n' % (label.decode('utf-8'), i)) 
         file.close()
 
     def lookup(self, key, default=None):

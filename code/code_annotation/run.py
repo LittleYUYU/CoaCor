@@ -15,7 +15,13 @@ def preprocess(lang):
           '-src_seq_length 120 -tgt_seq_length 20 '\
           '-tgt_word2id ../../data/source/%s.qt.vocab.pkl ' \
           '-save_data dataset/train_qt_new_cleaned/%s.processed_all ' \
-          '> log_qt_new_cleaned/log.%s.preprocess' % (lang, lang, lang, lang, lang, lang, lang)
+          '--DEV_src ../../data/source/codenn_%s/codenn.dev.ix_to_tokenized_code.pkl ' \
+          '--DEV_tgt ../../data/source/codenn_%s/codenn.dev.ix_to_tokenized_qt.pkl ' \
+          '--DEV_indices ../../data/source/codenn_%s/codenn.dev.qid_cid_pair.gen.dataset.pkl ' \
+          '--EVAL_src ../../data/source/codenn_%s/codenn.eval.ix_to_tokenized_code.pkl ' \
+          '--EVAL_tgt ../../data/source/codenn_%s/codenn.eval.ix_to_tokenized_qt.pkl ' \
+          '--EVAL_indices ../../data/source/codenn_%s/codenn.eval.qid_cid_pair.gen.dataset.pkl ' \
+          '> log_qt_new_cleaned/log.%s.preprocess' % (lang, lang, lang, lang, lang, lang, lang, lang, lang, lang, lang, lang, lang)
 
     print(run)
     a = os.system(run)
