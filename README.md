@@ -15,9 +15,22 @@ Outputs of each CA model, i.e., CodeNN, MLE-based, RL-BLEU and RL_MRR (ours), ca
 
 ## 2. Dataset
 ### Source Data
+**UPDATE 04/20/2020** 
+Please decompress the [data/source.tar] file as folder `data/source/`.
+The folder contains files from:
 - StaQC data: provided by [Yao et al., WWW'18](https://github.com/LittleYUYU/StackOverflow-Question-Code-Dataset). 
 - DEV/EVAL set: provided by [Iyer et al., ACL'16](https://github.com/sriniiyer/codenn).
-- Other source data (e.g., train/validation/test set splits, vocabulary) can be found [here](data/source).
+
+If you only want to reproduce our model, you can go ahead with the "processed data" (next subsection); If you also want to reproduce our data processing step, run:
+```
+cd code/code_annotation
+python run.py preprocess sql
+```
+Preprocessed data will be saved under:
+```
+|- code/code_annotation/dataset/train_qt_new_cleaned/
+```
+
 
 ### Processed Data
 The processed data for CA or CR are under their own folder.
@@ -60,7 +73,7 @@ Source code is under folder [code/code_annotation/](code/code_annotation/).
 
 For MLE training, see `run_mle.sh`.
 
-For RL-MRR training, see `run.sh`.
+For RL-MRR training, please first pretrain the generator via "MLE training", then run `run.sh`.
 
 Please refer to [code/code_annotation/run.py](code/code_annotation/run.py) for mode details.
 
