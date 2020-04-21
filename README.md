@@ -16,12 +16,14 @@ Outputs of each CA model, i.e., CodeNN, MLE-based, RL-BLEU and RL_MRR (ours), ca
 ## 2. Dataset
 ### Source Data
 **UPDATE 04/20/2020** 
-Please decompress the [data/source.tar] file as folder `data/source/`.
-The folder contains files from:
+Please decompress the "data/source.tar" file as folder `data/source/`.
+The folder contains data from:
 - StaQC data: provided by [Yao et al., WWW'18](https://github.com/LittleYUYU/StackOverflow-Question-Code-Dataset). 
 - DEV/EVAL set: provided by [Iyer et al., ACL'16](https://github.com/sriniiyer/codenn).
 
-If you only want to reproduce our model, you can go ahead with the "processed data" (next subsection); If you also want to reproduce our data processing step, run:
+All code snippets/texts have been tokenized for convenience.
+
+If you only want to **reproduce our model**, you can go ahead with the "processed data" (next subsection); If you also want to **reproduce our data processing step**, run:
 ```
 cd code/code_annotation
 python run.py preprocess sql
